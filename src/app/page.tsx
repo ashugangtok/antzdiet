@@ -151,9 +151,6 @@ export default function DietInsightsPage() {
     if (!details || details.length === 0) return "";
     const toFormat = limit && details.length > limit ? details.slice(0, limit) : details;
     let formattedString = `(${toFormat.map(d => `${d.name} (${d.animal_count})`).join(', ')}`;
-    if (limit && details.length > limit) {
-      // This part is now handled by the (view more) button logic, but good to keep the limit effective for initial display.
-    }
     formattedString += ')';
     return formattedString;
   };
@@ -652,6 +649,8 @@ export default function DietInsightsPage() {
 
       doc.text(`Consuming Animals: ${recipe.consuming_animals_count}`, 14, currentY);
       currentY += 5;
+      doc.text(`Consuming Enclosures: ${recipe.consuming_enclosures_count}`, 14, currentY);
+      currentY += 5;
 
       const mealTimesText = `Scheduled Meal Times: ${scheduledTimesString}`;
       const splitMealTimesText = doc.splitTextToSize(mealTimesText, doc.internal.pageSize.getWidth() - 28);
@@ -728,6 +727,9 @@ export default function DietInsightsPage() {
 
     doc.text(`Consuming Animals: ${recipe.consuming_animals_count}`, 14, currentY);
     currentY += 5;
+    doc.text(`Consuming Enclosures: ${recipe.consuming_enclosures_count}`, 14, currentY);
+    currentY += 5;
+
 
     const scheduledTimesString = recipe.scheduled_meal_times.length > 0 ? recipe.scheduled_meal_times.map(t => t.trim()).filter(Boolean).join(', ') : 'N/A';
     const mealTimesText = `Scheduled Meal Times: ${scheduledTimesString}`;
@@ -778,20 +780,17 @@ export default function DietInsightsPage() {
       alert("No combo ingredients with items to download based on current filters.");
       return;
     }
-    // This will be refactored to use the new pivoted structure.
-    // For now, let's keep it simple or placeholder.
-    alert("Pivoted PDF for All Combos - To be implemented based on new table structure.");
+    alert("PDF generation for pivoted Combo Ingredients is a complex feature and will be implemented later. For now, this button is a placeholder.");
     // const doc = new jsPDF();
-    // ... (old logic or new pivoted logic)
+    // ... (new pivoted logic for PDF)
     // doc.save('all_combo_ingredients_report.pdf');
   };
 
   const handleSingleComboPdfDownload = (group: GroupedComboIngredient) => {
     if (!group || group.ingredients.length === 0) return alert("No ingredient data for this combo group to download.");
-     // This will be refactored to use the new pivoted structure.
-    alert("Pivoted PDF for Single Combo - To be implemented based on new table structure.");
+    alert("PDF generation for pivoted Combo Ingredients is a complex feature and will be implemented later. For now, this button is a placeholder.");
     // const doc = new jsPDF();
-    // ... (old logic or new pivoted logic)
+    // ... (new pivoted logic for PDF)
     // doc.save(`ComboGroup_${group.combo_group_name.replace(/\s+/g, '_')}_${targetDisplayDuration}Days.pdf`);
   };
 
@@ -811,11 +810,9 @@ export default function DietInsightsPage() {
       if (index > 0) currentY += 15;
       const speciesDetailsString = formatSpeciesDetails(group.consuming_species_details);
       const scheduledTimesString = group.scheduled_meal_times.length > 0 ? group.scheduled_meal_times.map(t => t.trim()).filter(Boolean).join(', ') : 'N/A';
-      const animalIdsString = group.consuming_animal_ids.join(', ');
-      const enclosuresString = group.consuming_enclosures.join(', ');
-
+      
       const ingredientsByCutSize = groupIngredientsByCutSize(group.ingredients);
-      let estimatedHeight = 70 + (speciesDetailsString.length / 50 * 4) + (scheduledTimesString.length / 50 * 4) + (animalIdsString.length / 50 * 4) + (enclosuresString.length / 50 * 4);
+      let estimatedHeight = 70 + (speciesDetailsString.length / 50 * 4) + (scheduledTimesString.length / 50 * 4);
       ingredientsByCutSize.forEach((ingredientsForCut, cutSize) => {
         estimatedHeight += 10;
         estimatedHeight += ingredientsForCut.length * 8;
@@ -1299,11 +1296,65 @@ export default function DietInsightsPage() {
                     const itemKey = `combo-${comboGroup.combo_group_name.replace(/\s+/g, '-')}`;
                     return (
                     <Card key={itemKey} className="overflow-hidden shadow-md rounded-lg">
-                      <CardHeader className="bg-card flex flex-row items-center justify-between p-4">
-                        <CardTitle className="text-xl font-semibold text-accent">
-                           {comboGroup.combo_group_name}
-                           {selectedMealTimes.length === 1 ? ` - ${selectedMealTimes[0]}` : ''}
-                        </CardTitle>
+                      <CardHeader className="bg-muted/50 flex flex-row items-center justify-between p-4">
+                        <div>
+                          <CardTitle className="text-lg font-semibold text-accent">
+                            {comboGroup.combo_group_name}{selectedMealTimes.length === 1 ? ` - ${selectedMealTimes[0]}` : ''}
+                          </CardTitle>
+                           <CardDescription className="text-sm text-foreground space-y-1 mt-1">
+                              <div className="flex flex-row flex-wrap items-baseline">
+                                <span className="font-semibold whitespace-nowrap mr-1">Consuming Species:</span>
+                                  <Button
+                                      variant="link"
+                                      className="p-0 h-auto text-sm text-primary font-bold"
+                                      onClick={() => openSpeciesListModal(`Species consuming ${comboGroup.combo_group_name}`, comboGroup.overall_consuming_species_details)}
+                                      disabled={comboGroup.overall_consuming_species_details.length === 0}
+                                  >
+                                      {comboGroup.overall_consuming_species_details.length}
+                                  </Button>
+                                  {comboGroup.overall_consuming_species_details.length > 0 && (
+                                      <span className={`ml-1 ${!expandedSpeciesText[itemKey] ? "line-clamp-2" : ""}`}>
+                                      {formatSpeciesDetails(comboGroup.overall_consuming_species_details, !expandedSpeciesText[itemKey] ? 10 : undefined)}
+                                    </span>
+                                  )}
+                                  {comboGroup.overall_consuming_species_details.length > 10 && (
+                                      <Button variant="link" className="p-0 h-auto text-xs ml-1 whitespace-nowrap" onClick={() => toggleSpeciesTextExpansion(itemKey)}>
+                                          {expandedSpeciesText[itemKey] ? "(view less)" : "(view more)"}
+                                      </Button>
+                                  )}
+                              </div>
+                              <div>
+                                <span className="font-semibold">Consuming Animals: </span>
+                                <Button
+                                    variant="link"
+                                    className="p-0 h-auto text-sm text-primary font-bold"
+                                    onClick={() => openAnimalListModal(`Animals consuming ${comboGroup.combo_group_name}`, comboGroup.overall_consuming_animal_ids)}
+                                    disabled={comboGroup.overall_consuming_animals_count === 0}
+                                  >
+                                    {comboGroup.overall_consuming_animals_count}
+                                  </Button>
+                              </div>
+                              <div>
+                                <span className="font-semibold">Consuming Enclosures: </span>
+                                  <Button
+                                    variant="link"
+                                    className="p-0 h-auto text-sm text-primary font-bold"
+                                    onClick={() => openEnclosureListModal(`Enclosures for ${comboGroup.combo_group_name}`, comboGroup.overall_consuming_enclosures)}
+                                    disabled={comboGroup.overall_consuming_enclosures_count === 0}
+                                  >
+                                    {comboGroup.overall_consuming_enclosures_count}
+                                  </Button>
+                              </div>
+                              <div>
+                                  <span className="font-semibold">Scheduled Meal Times: </span>
+                                  <div className="inline-flex flex-wrap gap-1 items-center">
+                                    {comboGroup.group_specific_meal_times && comboGroup.group_specific_meal_times.length > 0
+                                      ? comboGroup.group_specific_meal_times.map(time => <Badge key={time} variant="secondary" className="mr-1 mb-1">{time}</Badge>)
+                                      : <Badge variant="outline">N/A</Badge>}
+                                  </div>
+                                </div>
+                            </CardDescription>
+                        </div>
                         <Button
                           variant="outline"
                           size="sm"
@@ -1321,7 +1372,6 @@ export default function DietInsightsPage() {
                           data={comboGroup.ingredients}
                           caption={`Ingredients for ${comboGroup.combo_group_name}`}
                         />
-                        {/* Summary rows like # of Animals per meal time */}
                         <div className="mt-4 p-2 border rounded-md">
                           <h4 className="text-md font-semibold mb-2 text-muted-foreground">Summary per Meal Time:</h4>
                           <div className="overflow-x-auto">
@@ -1535,7 +1585,7 @@ export default function DietInsightsPage() {
               <CardContent className="space-y-4">
                  <Button
                   onClick={handleGenerateSummary}
-                  disabled={isGeneratingSummary || !dietData || isProcessingOverall || isProcessingRecipes || isProcessingCombo || isProcessingChoice}
+                  disabled={isGeneratingSummary || !dietData || isProcessingOverall || isProcessingDetailedRaw || isProcessingRecipes || isProcessingCombo || isProcessingChoice}
                 >
                   {isGeneratingSummary ? (
                     <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Generating...</>
@@ -1684,4 +1734,3 @@ export default function DietInsightsPage() {
     </div>
   );
 }
-
