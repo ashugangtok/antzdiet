@@ -1,10 +1,11 @@
+
 "use client";
 
 import type React from 'react';
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { UploadCloud, Loader2 } from 'lucide-react';
+import { UploadCloud, Loader2, FileText } from 'lucide-react';
 import { Label } from './ui/label';
 
 interface FileUploadProps {
@@ -15,6 +16,7 @@ interface FileUploadProps {
 export function FileUpload({ onFileUpload, isLoading }: FileUploadProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileName, setFileName] = useState<string>('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -26,8 +28,13 @@ export function FileUpload({ onFileUpload, isLoading }: FileUploadProps) {
         alert('Invalid file type. Please upload an .xlsx file.');
         setSelectedFile(null);
         setFileName('');
-        event.target.value = ''; // Reset file input
+        if (event.target) {
+          event.target.value = ''; // Reset file input
+        }
       }
+    } else {
+      setSelectedFile(null);
+      setFileName('');
     }
   };
 
@@ -40,21 +47,47 @@ export function FileUpload({ onFileUpload, isLoading }: FileUploadProps) {
     }
   };
 
+  const handleChooseFileClick = () => {
+    fileInputRef.current?.click();
+  };
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 p-6 bg-card rounded-lg shadow">
+    <form onSubmit={handleSubmit} className="space-y-6 p-6 bg-card rounded-lg shadow">
       <div className="space-y-2">
-        <Label htmlFor="file-upload" className="text-lg font-medium">Upload Diet Plan</Label>
-        <div className="flex items-center space-x-2">
-          <Input
-            id="file-upload"
-            type="file"
-            accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            onChange={handleFileChange}
-            className="flex-grow file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
-            aria-describedby="file-upload-help"
-          />
+        <Label htmlFor="file-upload-button" className="text-lg font-medium">Upload Diet Plan</Label>
+        
+        <Input
+          id="file-upload-input"
+          type="file"
+          accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          onChange={handleFileChange}
+          className="hidden" // Hide the actual file input
+          ref={fileInputRef}
+          aria-describedby="file-upload-help"
+        />
+        
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+          <Button
+            id="file-upload-button"
+            type="button" // Important: prevent form submission
+            onClick={handleChooseFileClick}
+            variant="default" 
+            className="shrink-0"
+          >
+            <UploadCloud className="mr-2 h-4 w-4" />
+            Choose File
+          </Button>
+          <div className="flex items-center text-sm text-muted-foreground border border-input rounded-md px-3 py-2 min-h-[2.5rem] flex-grow break-all">
+            {fileName ? (
+              <>
+                <FileText className="mr-2 h-4 w-4 text-primary shrink-0" />
+                <span className="truncate">{fileName}</span>
+              </>
+            ) : (
+              "No file chosen"
+            )}
+          </div>
         </div>
-        {fileName && <p className="text-sm text-muted-foreground">Selected file: {fileName}</p>}
         <p id="file-upload-help" className="text-xs text-muted-foreground">
           Please upload an Excel file (.xlsx) with the diet plan.
         </p>
