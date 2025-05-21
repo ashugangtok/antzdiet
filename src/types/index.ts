@@ -37,7 +37,7 @@ export interface ParsedExcelData {
   maxDate: Date | null;
 }
 
-export interface SiteIngredientsData {
+export interface SiteIngredientsData { // Used for the simplified "Ingredient Totals" tab
   ingredient_name: string;
   base_uom_name: string;
   qty_per_day: number;
@@ -49,6 +49,22 @@ export interface ProcessedIngredientTotalsResult {
   totalAnimals: number; // Global count based on filters
   totalSpecies: number; // Global count based on filters
 }
+
+export interface DetailedRawMaterialData {
+  ingredient_name: string;
+  preparation_type_name?: string;
+  cut_size_name?: string;
+  base_uom_name: string;
+  qty_per_day: number;
+  qty_for_target_duration: number;
+}
+
+export interface ProcessedDetailedRawMaterialResult {
+  data: DetailedRawMaterialData[];
+  totalAnimals: number;
+  totalSpecies: number;
+}
+
 
 export interface SpeciesConsumptionDetail {
   name: string; // Species common name
@@ -149,4 +165,3 @@ export interface ColumnDefinition<T extends object> {
   header: string;
   cell?: (row: T) => React.ReactNode;
 }
-
