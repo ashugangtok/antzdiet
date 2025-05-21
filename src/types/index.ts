@@ -1,5 +1,4 @@
 
-
 export interface DietEntry {
   animal_id: string | number;
   label?: string;
@@ -55,7 +54,7 @@ export interface DetailedRawMaterialData { // Used for "Raw Materials Required" 
   ingredient_name: string;
   base_uom_name: string;
   qty_per_day: number;
-  qty_for_target_duration: number; 
+  // qty_for_target_duration is no longer directly stored here as UI uses qty_per_day
 }
 
 export interface ProcessedDetailedRawMaterialResult {
@@ -75,10 +74,12 @@ export interface RecipeIngredientItem {
   ingredient_name: string;
   preparation_type_name?: string;
   cut_size_name?: string;
-  qty_per_day: number; // Quantity normalized to 1 day
-  qty_for_target_duration: number; // Quantity for the selected display duration
+  qty_per_day: number; // Quantity normalized to 1 day (for the entire recipe formulation)
+  qty_for_target_duration: number; // Quantity for the selected display duration (for the entire recipe formulation)
   base_uom_name: string;
-  parent_consuming_animals_count?: number;
+  parent_consuming_animals_count?: number; // Animals consuming the parent recipe
+  quantities_by_meal_time: Record<string, number>; // Quantity for this ingredient at a specific meal time
+  total_qty_for_target_duration_across_meal_times: number; // Sum of quantities_by_meal_time
 }
 
 export interface GroupedRecipe {
@@ -87,12 +88,19 @@ export interface GroupedRecipe {
   total_qty_for_target_duration: number; // Total recipe quantity for selected display duration
   base_uom_name: string; // UOM for the total_recipe_qty
   ingredients: RecipeIngredientItem[];
-  consuming_species_details: SpeciesConsumptionDetail[];
-  consuming_animals_count: number;
-  consuming_animal_ids: string[];
-  consuming_enclosures: string[];
-  consuming_enclosures_count: number;
-  scheduled_meal_times: string[]; // Unique meal times for this recipe based on its ingredients' diet entries
+  // Overall consumer details for the card header
+  overall_consuming_species_details: SpeciesConsumptionDetail[];
+  overall_consuming_animals_count: number;
+  overall_consuming_animal_ids: string[];
+  overall_consuming_enclosures: string[];
+  overall_consuming_enclosures_count: number;
+  scheduled_meal_times: string[]; // Unique meal times for this recipe (overall)
+
+  // For pivoted table footer
+  group_specific_meal_times: string[]; // Meal times to show as columns in pivoted table
+  animals_per_meal_time: Record<string, string[]>; // meal_time -> animal_id[]
+  species_details_per_meal_time: Record<string, SpeciesConsumptionDetail[]>; // meal_time -> species_detail[]
+  enclosures_per_meal_time: Record<string, string[]>; // meal_time -> enclosure_name[]
 }
 
 export interface ProcessedRecipeDataResult {
@@ -107,20 +115,16 @@ export interface ComboIngredientItem {
   preparation_type_name?: string;
   cut_size_name?: string;
   base_uom_name: string;
-  quantities_by_meal_time: Record<string, number>;
-  total_qty_for_target_duration_across_meal_times: number;
-  parent_consuming_animals_count?: number; // Not currently used in pivoted view but kept for potential future consistency
+  quantities_by_meal_time: Record<string, number>; // Qty for this ingredient at specific meal_time for target duration
+  total_qty_for_target_duration_across_meal_times: number; // Sum of quantities_by_meal_time
+  parent_consuming_animals_count?: number;
 }
 
 export interface GroupedComboIngredient {
-  combo_group_name: string; 
-  group_specific_meal_times: string[];
-  ingredients: ComboIngredientItem[]; 
-
-  // Per-meal-time summaries for the table footer
-  animals_per_meal_time: Record<string, string[]>; 
-  species_details_per_meal_time: Record<string, SpeciesConsumptionDetail[]>; 
-  enclosures_per_meal_time: Record<string, string[]>; 
+  combo_group_name: string;
+  group_specific_meal_times: string[]; // Meal times to show as columns
+  ingredients: ComboIngredientItem[];
+  base_uom_name: string; // Overall UOM, might be the most common or first found.
 
   // Overall group details for the card header
   overall_consuming_species_details: SpeciesConsumptionDetail[];
@@ -128,14 +132,17 @@ export interface GroupedComboIngredient {
   overall_consuming_animal_ids: string[];
   overall_consuming_enclosures: string[];
   overall_consuming_enclosures_count: number;
-  
-  base_uom_name: string; // Overall UOM, might be the most common or first found.
+
+  // Per-meal-time summaries for the table footer
+  animals_per_meal_time: Record<string, string[]>;
+  species_details_per_meal_time: Record<string, SpeciesConsumptionDetail[]>;
+  enclosures_per_meal_time: Record<string, string[]>;
 }
 
 export interface ProcessedComboIngredientsResult {
   data: GroupedComboIngredient[];
-  totalAnimals: number; 
-  totalSpecies: number; 
+  totalAnimals: number;
+  totalSpecies: number;
 }
 
 
@@ -144,30 +151,39 @@ export interface ChoiceIngredientItem {
   ingredient_name: string;
   preparation_type_name?: string;
   cut_size_name?: string;
-  qty_per_day: number;
-  qty_for_target_duration: number;
+  qty_per_day: number; // Quantity normalized to 1 day (for the entire choice group formulation)
+  qty_for_target_duration: number; // Quantity for display duration (for the entire choice group formulation)
   base_uom_name: string;
-  parent_consuming_animals_count?: number;
+  parent_consuming_animals_count?: number; // Animals consuming the parent choice group
+  quantities_by_meal_time: Record<string, number>; // Quantity for this ingredient at a specific meal time
+  total_qty_for_target_duration_across_meal_times: number; // Sum of quantities_by_meal_time
 }
 
 export interface GroupedChoiceIngredient {
-  choice_group_name: string; 
-  total_qty_per_day: number;
-  total_qty_for_target_duration: number;
+  choice_group_name: string;
+  total_qty_per_day: number; // Total group quantity for 1 day
+  total_qty_for_target_duration: number; // Total group quantity for selected display duration
   base_uom_name: string;
   ingredients: ChoiceIngredientItem[];
-  consuming_species_details: SpeciesConsumptionDetail[];
-  consuming_animals_count: number;
-  consuming_animal_ids: string[];
-  consuming_enclosures: string[];
-  consuming_enclosures_count: number;
-  scheduled_meal_times: string[];
+  // Overall consumer details for the card header
+  overall_consuming_species_details: SpeciesConsumptionDetail[];
+  overall_consuming_animals_count: number;
+  overall_consuming_animal_ids: string[];
+  overall_consuming_enclosures: string[];
+  overall_consuming_enclosures_count: number;
+  scheduled_meal_times: string[]; // Unique meal times for this choice group (overall)
+
+  // For pivoted table footer
+  group_specific_meal_times: string[]; // Meal times to show as columns in pivoted table
+  animals_per_meal_time: Record<string, string[]>; // meal_time -> animal_id[]
+  species_details_per_meal_time: Record<string, SpeciesConsumptionDetail[]>; // meal_time -> species_detail[]
+  enclosures_per_meal_time: Record<string, string[]>; // meal_time -> enclosure_name[]
 }
 
 export interface ProcessedChoiceIngredientsResult {
   data: GroupedChoiceIngredient[];
-  totalAnimals: number; 
-  totalSpecies: number; 
+  totalAnimals: number;
+  totalSpecies: number;
 }
 
 
@@ -176,3 +192,5 @@ export interface ColumnDefinition<T extends object> {
   header: string;
   cell?: (row: T) => React.ReactNode;
 }
+
+    
