@@ -184,7 +184,7 @@ export const getGlobalCounts = (filteredData: DietEntry[]): { totalAnimals: numb
 };
 
 
-export const processOverallIngredientTotals = ( // For the simplified "Ingredient Totals" tab
+export const processOverallIngredientTotals = (
   globallyFilteredData: DietEntry[],
   globalTotalAnimals: number,
   globalTotalSpecies: number,
@@ -203,7 +203,7 @@ export const processOverallIngredientTotals = ( // For the simplified "Ingredien
   }> = {};
 
   ingredientsToSum.forEach(entry => {
-    const key = `${entry.ingredient_name}-${entry.base_uom_name}`; // Simplified key
+    const key = `${entry.ingredient_name}-${entry.base_uom_name}`;
     if (!grouped[key]) {
       grouped[key] = {
         ingredient_name: entry.ingredient_name,
@@ -231,7 +231,7 @@ export const processOverallIngredientTotals = ( // For the simplified "Ingredien
   };
 };
 
-export const processDetailedRawMaterialTotals = ( // For "Raw Materials Required" tab
+export const processDetailedRawMaterialTotals = (
   globallyFilteredData: DietEntry[],
   globalTotalAnimals: number,
   globalTotalSpecies: number,
@@ -249,7 +249,6 @@ export const processDetailedRawMaterialTotals = ( // For "Raw Materials Required
   }> = {};
 
   ingredientsToSum.forEach(entry => {
-    // Group only by ingredient name and base UOM
     const key = `${entry.ingredient_name}-${entry.base_uom_name}`;
     if (!grouped[key]) {
       grouped[key] = {
@@ -267,7 +266,7 @@ export const processDetailedRawMaterialTotals = ( // For "Raw Materials Required
       ingredient_name: item.ingredient_name,
       base_uom_name: item.base_uom_name,
       qty_per_day: parseFloat(qtyPerDay.toFixed(2)),
-      qty_for_target_duration: parseFloat((qtyPerDay * targetOutputDuration).toFixed(2)), // Still calculated for potential future use or consistency
+      qty_for_target_duration: parseFloat((qtyPerDay * targetOutputDuration).toFixed(2)),
     };
   });
 
@@ -280,20 +279,19 @@ export const processDetailedRawMaterialTotals = ( // For "Raw Materials Required
 
 
 export const processRecipeData = (
-  originalDietData: DietEntry[], // Used for accurate consumer mapping
-  globallyFilteredData: DietEntry[], // Used for quantity calculations based on current filters
+  originalDietData: DietEntry[],
+  globallyFilteredData: DietEntry[],
   globalTotalAnimals: number,
   globalTotalSpecies: number,
   actualInputDuration: number = 1,
   targetOutputDuration: number = 1
 ): ProcessedRecipeDataResult => {
 
-  const recipeConsumerDetails: Record<string, {
+  const recipeConsumerDetails: Record<string, { // Key: recipeName
     speciesMap: Map<string, Set<string>>; // species_common_name -> Set<animal_id>
     mealTimes: Set<string>;
   }> = {};
 
-  // Determine consumers for each recipe from the original, unfiltered data
   originalDietData
     .filter(e => typeof e.type === 'string' && e.type.toLowerCase() === 'recipe' && e.type_name)
     .forEach(entry => {
@@ -313,7 +311,7 @@ export const processRecipeData = (
       }
     });
 
-  const recipeEntries = globallyFilteredData.filter(entry =>
+  const recipeDataEntries = globallyFilteredData.filter(entry =>
     typeof entry.type === 'string' && entry.type.toLowerCase() === 'recipe' && entry.type_name
   );
 
@@ -326,7 +324,7 @@ export const processRecipeData = (
     raw_total_qty: number;
   }> = {};
 
-  recipeEntries.forEach(entry => {
+  recipeDataEntries.forEach(entry => {
     const recipeName = entry.type_name!;
     const ingredientName = entry.ingredient_name;
     const uom = entry.base_uom_name;
@@ -353,8 +351,8 @@ export const processRecipeData = (
     recipe_total_qty_per_day_sum: number;
     recipe_total_qty_for_target_duration_sum: number;
     uom_counts: Record<string, number>;
-    parent_consuming_animals_count: number;
     consuming_species_details: SpeciesConsumptionDetail[];
+    consuming_animals_count: number;
     scheduled_meal_times: string[];
   }> = {};
 
@@ -386,8 +384,8 @@ export const processRecipeData = (
         recipe_total_qty_per_day_sum: 0,
         recipe_total_qty_for_target_duration_sum: 0,
         uom_counts: {},
-        parent_consuming_animals_count: specificRecipeAnimalCount,
         consuming_species_details: currentSpeciesDetails,
+        consuming_animals_count: specificRecipeAnimalCount,
         scheduled_meal_times: currentScheduledMealTimes,
       };
     }
@@ -417,8 +415,6 @@ export const processRecipeData = (
         }
       }
     }
-    const consumerInfo = recipeConsumerDetails[recipe.recipe_name];
-    const species_list_for_modal = consumerInfo ? Array.from(consumerInfo.speciesMap.keys()).sort() : [];
 
     return {
       recipe_name: recipe.recipe_name,
@@ -426,9 +422,8 @@ export const processRecipeData = (
       total_qty_for_target_duration: parseFloat(recipe.recipe_total_qty_for_target_duration_sum.toFixed(4)),
       base_uom_name: recipeUom,
       ingredients: recipe.ingredients,
-      consuming_species: species_list_for_modal,
-      consuming_animals_count: recipe.parent_consuming_animals_count,
       consuming_species_details: recipe.consuming_species_details,
+      consuming_animals_count: recipe.consuming_animals_count,
       scheduled_meal_times: recipe.scheduled_meal_times,
     };
   });
@@ -449,24 +444,32 @@ export const processComboIngredientUsage = (
   targetOutputDuration: number = 1
 ): ProcessedComboIngredientsResult => {
 
-  const comboConsumerDetails: Record<string, {
-    speciesMap: Map<string, Set<string>>;
+  const comboConsumerDetails: Record<string, { // Key: comboGroupName
+    speciesMap: Map<string, Set<string>>; // species_common_name -> Set<animal_id>
+    animalIdSet: Set<string>; // To track unique animal_id for this combo group
+    enclosureSet: Set<string>; // To track unique user_enclosure_name for this combo group
     mealTimes: Set<string>;
   }> = {};
 
   originalDietData
     .filter(e => typeof e.type === 'string' && e.type.toLowerCase() === 'combo')
     .forEach(entry => {
-      const groupName = entry.type_name || 'Default Combo Group';
-      if (!comboConsumerDetails[groupName]) {
-        comboConsumerDetails[groupName] = { speciesMap: new Map(), mealTimes: new Set() };
+      const comboGroupName = entry.type_name || 'Default Combo Group';
+      if (!comboConsumerDetails[comboGroupName]) {
+        comboConsumerDetails[comboGroupName] = { speciesMap: new Map(), animalIdSet: new Set(), enclosureSet: new Set(), mealTimes: new Set() };
       }
-      const details = comboConsumerDetails[groupName];
+      const details = comboConsumerDetails[comboGroupName];
+      if (entry.animal_id) {
+        details.animalIdSet.add(String(entry.animal_id));
+      }
       if (entry.common_name && entry.animal_id) {
         if (!details.speciesMap.has(entry.common_name)) {
           details.speciesMap.set(entry.common_name, new Set());
         }
         details.speciesMap.get(entry.common_name)!.add(String(entry.animal_id));
+      }
+      if (entry.user_enclosure_name) {
+        details.enclosureSet.add(entry.user_enclosure_name);
       }
       if (entry.meal_time) {
         details.mealTimes.add(entry.meal_time.trim());
@@ -477,7 +480,7 @@ export const processComboIngredientUsage = (
     typeof entry.type === 'string' && entry.type.toLowerCase() === 'combo'
   );
 
-  const aggregatedIngredients: Record<string, {
+  const aggregatedIngredients: Record<string, { // Key: comboGroupName-ingredient-prep-cut-uom
     combo_group_name: string;
     ingredient_name: string;
     preparation_type_name?: string;
@@ -513,8 +516,11 @@ export const processComboIngredientUsage = (
     group_total_qty_per_day_sum: number;
     group_total_qty_for_target_duration_sum: number;
     uom_counts: Record<string, number>;
-    parent_consuming_animals_count: number;
     consuming_species_details: SpeciesConsumptionDetail[];
+    consuming_animals_count: number;
+    consuming_animal_ids: string[];
+    consuming_enclosures: string[];
+    consuming_enclosures_count: number;
     scheduled_meal_times: string[];
   }> = {};
 
@@ -523,19 +529,22 @@ export const processComboIngredientUsage = (
     const qtyForTargetDurationIngredient = qtyPerDayForIngredient * targetOutputDuration;
     
     const consumerInfo = comboConsumerDetails[item.combo_group_name];
-    let specificGroupAnimalCount = 0;
     let currentSpeciesDetails: SpeciesConsumptionDetail[] = [];
+    let currentAnimalIds: string[] = [];
+    let currentAnimalCount = 0;
+    let currentEnclosures: string[] = [];
+    let currentEnclosureCount = 0;
     let currentScheduledMealTimes: string[] = [];
 
-     if (consumerInfo) {
-        const uniqueAnimalsForGroup = new Set<string>();
-        consumerInfo.speciesMap.forEach(animalSet => {
-            animalSet.forEach(animalId => uniqueAnimalsForGroup.add(animalId));
-        });
-        specificGroupAnimalCount = uniqueAnimalsForGroup.size;
+
+    if (consumerInfo) {
+        currentAnimalIds = Array.from(consumerInfo.animalIdSet).sort();
+        currentAnimalCount = consumerInfo.animalIdSet.size;
         currentSpeciesDetails = Array.from(consumerInfo.speciesMap.entries()).map(([speciesName, animalSet]) => ({
           name: speciesName, animal_count: animalSet.size
         })).sort((a, b) => a.name.localeCompare(b.name));
+        currentEnclosures = Array.from(consumerInfo.enclosureSet).sort();
+        currentEnclosureCount = consumerInfo.enclosureSet.size;
         currentScheduledMealTimes = Array.from(consumerInfo.mealTimes).sort();
     }
 
@@ -546,8 +555,11 @@ export const processComboIngredientUsage = (
         group_total_qty_per_day_sum: 0,
         group_total_qty_for_target_duration_sum: 0,
         uom_counts: {},
-        parent_consuming_animals_count: specificGroupAnimalCount,
         consuming_species_details: currentSpeciesDetails,
+        consuming_animals_count: currentAnimalCount,
+        consuming_animal_ids: currentAnimalIds,
+        consuming_enclosures: currentEnclosures,
+        consuming_enclosures_count: currentEnclosureCount,
         scheduled_meal_times: currentScheduledMealTimes,
       };
     }
@@ -559,7 +571,7 @@ export const processComboIngredientUsage = (
       qty_per_day: parseFloat(qtyPerDayForIngredient.toFixed(4)),
       qty_for_target_duration: parseFloat(qtyForTargetDurationIngredient.toFixed(4)),
       base_uom_name: item.base_uom_name,
-      parent_consuming_animals_count: specificGroupAnimalCount,
+      parent_consuming_animals_count: currentAnimalCount,
     });
     comboGroupsMap[item.combo_group_name].group_total_qty_per_day_sum += qtyPerDayForIngredient;
     comboGroupsMap[item.combo_group_name].group_total_qty_for_target_duration_sum += qtyForTargetDurationIngredient;
@@ -577,8 +589,6 @@ export const processComboIngredientUsage = (
         }
       }
     }
-    const consumerInfo = comboConsumerDetails[group.combo_group_name];
-    const species_list_for_modal = consumerInfo ? Array.from(consumerInfo.speciesMap.keys()).sort() : [];
 
     return {
       combo_group_name: group.combo_group_name,
@@ -586,9 +596,11 @@ export const processComboIngredientUsage = (
       total_qty_for_target_duration: parseFloat(group.group_total_qty_for_target_duration_sum.toFixed(4)),
       base_uom_name: groupUom,
       ingredients: group.ingredients,
-      consuming_species: species_list_for_modal,
-      consuming_animals_count: group.parent_consuming_animals_count,
       consuming_species_details: group.consuming_species_details,
+      consuming_animals_count: group.consuming_animals_count,
+      consuming_animal_ids: group.consuming_animal_ids,
+      consuming_enclosures: group.consuming_enclosures,
+      consuming_enclosures_count: group.consuming_enclosures_count,
       scheduled_meal_times: group.scheduled_meal_times,
     };
   });
@@ -610,26 +622,34 @@ export const processChoiceIngredientUsage = (
   targetOutputDuration: number = 1
 ): ProcessedChoiceIngredientsResult => {
 
-  const choiceConsumerDetails: Record<string, {
+  const choiceConsumerDetails: Record<string, { // Key: choiceGroupName
     speciesMap: Map<string, Set<string>>;
+    animalIdSet: Set<string>;
+    enclosureSet: Set<string>;
     mealTimes: Set<string>;
   }> = {};
 
   originalDietData
     .filter(e => typeof e.type === 'string' && e.type.toLowerCase() === 'ingredientwithchoice')
     .forEach(entry => {
-      const groupName = entry.type_name || 'Default Choice Group';
-      if (!choiceConsumerDetails[groupName]) {
-        choiceConsumerDetails[groupName] = { speciesMap: new Map(), mealTimes: new Set() };
+      const choiceGroupName = entry.type_name || 'Default Choice Group';
+      if (!choiceConsumerDetails[choiceGroupName]) {
+        choiceConsumerDetails[choiceGroupName] = { speciesMap: new Map(), animalIdSet: new Set(), enclosureSet: new Set(), mealTimes: new Set() };
       }
-      const details = choiceConsumerDetails[groupName];
+      const details = choiceConsumerDetails[choiceGroupName];
+      if (entry.animal_id) {
+        details.animalIdSet.add(String(entry.animal_id));
+      }
       if (entry.common_name && entry.animal_id) {
         if (!details.speciesMap.has(entry.common_name)) {
           details.speciesMap.set(entry.common_name, new Set());
         }
         details.speciesMap.get(entry.common_name)!.add(String(entry.animal_id));
       }
-       if (entry.meal_time) {
+      if (entry.user_enclosure_name) {
+        details.enclosureSet.add(entry.user_enclosure_name);
+      }
+      if (entry.meal_time) {
         details.mealTimes.add(entry.meal_time.trim());
       }
     });
@@ -638,7 +658,7 @@ export const processChoiceIngredientUsage = (
     typeof entry.type === 'string' && entry.type.toLowerCase() === 'ingredientwithchoice'
   );
 
-  const aggregatedIngredients: Record<string, {
+  const aggregatedIngredients: Record<string, { // Key: choiceGroupName-ingredient-prep-cut-uom
     choice_group_name: string;
     ingredient_name: string;
     preparation_type_name?: string;
@@ -674,8 +694,11 @@ export const processChoiceIngredientUsage = (
     group_total_qty_per_day_sum: number;
     group_total_qty_for_target_duration_sum: number;
     uom_counts: Record<string, number>;
-    parent_consuming_animals_count: number;
     consuming_species_details: SpeciesConsumptionDetail[];
+    consuming_animals_count: number;
+    consuming_animal_ids: string[];
+    consuming_enclosures: string[];
+    consuming_enclosures_count: number;
     scheduled_meal_times: string[];
   }> = {};
 
@@ -684,22 +707,23 @@ export const processChoiceIngredientUsage = (
     const qtyForTargetDurationIngredient = qtyPerDayForIngredient * targetOutputDuration;
 
     const consumerInfo = choiceConsumerDetails[item.choice_group_name];
-    let specificGroupAnimalCount = 0;
     let currentSpeciesDetails: SpeciesConsumptionDetail[] = [];
+    let currentAnimalIds: string[] = [];
+    let currentAnimalCount = 0;
+    let currentEnclosures: string[] = [];
+    let currentEnclosureCount = 0;
     let currentScheduledMealTimes: string[] = [];
 
     if (consumerInfo) {
-        const uniqueAnimalsForGroup = new Set<string>();
-        consumerInfo.speciesMap.forEach(animalSet => {
-            animalSet.forEach(animalId => uniqueAnimalsForGroup.add(animalId));
-        });
-        specificGroupAnimalCount = uniqueAnimalsForGroup.size;
+        currentAnimalIds = Array.from(consumerInfo.animalIdSet).sort();
+        currentAnimalCount = consumerInfo.animalIdSet.size;
         currentSpeciesDetails = Array.from(consumerInfo.speciesMap.entries()).map(([speciesName, animalSet]) => ({
           name: speciesName, animal_count: animalSet.size
         })).sort((a, b) => a.name.localeCompare(b.name));
+        currentEnclosures = Array.from(consumerInfo.enclosureSet).sort();
+        currentEnclosureCount = consumerInfo.enclosureSet.size;
         currentScheduledMealTimes = Array.from(consumerInfo.mealTimes).sort();
     }
-
 
     if (!choiceGroupsMap[item.choice_group_name]) {
       choiceGroupsMap[item.choice_group_name] = {
@@ -708,8 +732,11 @@ export const processChoiceIngredientUsage = (
         group_total_qty_per_day_sum: 0,
         group_total_qty_for_target_duration_sum: 0,
         uom_counts: {},
-        parent_consuming_animals_count: specificGroupAnimalCount,
         consuming_species_details: currentSpeciesDetails,
+        consuming_animals_count: currentAnimalCount,
+        consuming_animal_ids: currentAnimalIds,
+        consuming_enclosures: currentEnclosures,
+        consuming_enclosures_count: currentEnclosureCount,
         scheduled_meal_times: currentScheduledMealTimes,
       };
     }
@@ -721,7 +748,7 @@ export const processChoiceIngredientUsage = (
       qty_per_day: parseFloat(qtyPerDayForIngredient.toFixed(4)),
       qty_for_target_duration: parseFloat(qtyForTargetDurationIngredient.toFixed(4)),
       base_uom_name: item.base_uom_name,
-      parent_consuming_animals_count: specificGroupAnimalCount,
+      parent_consuming_animals_count: currentAnimalCount,
     });
     choiceGroupsMap[item.choice_group_name].group_total_qty_per_day_sum += qtyPerDayForIngredient;
     choiceGroupsMap[item.choice_group_name].group_total_qty_for_target_duration_sum += qtyForTargetDurationIngredient;
@@ -740,19 +767,17 @@ export const processChoiceIngredientUsage = (
       }
     }
     
-    const consumerInfo = choiceConsumerDetails[group.choice_group_name];
-    const species_list_for_modal = consumerInfo ? Array.from(consumerInfo.speciesMap.keys()).sort() : [];
-
-
     return {
       choice_group_name: group.choice_group_name,
       total_qty_per_day: parseFloat(group.group_total_qty_per_day_sum.toFixed(4)),
       total_qty_for_target_duration: parseFloat(group.group_total_qty_for_target_duration_sum.toFixed(4)),
       base_uom_name: groupUom,
       ingredients: group.ingredients,
-      consuming_species: species_list_for_modal,
-      consuming_animals_count: group.parent_consuming_animals_count,
       consuming_species_details: group.consuming_species_details,
+      consuming_animals_count: group.consuming_animals_count,
+      consuming_animal_ids: group.consuming_animal_ids,
+      consuming_enclosures: group.consuming_enclosures,
+      consuming_enclosures_count: group.consuming_enclosures_count,
       scheduled_meal_times: group.scheduled_meal_times,
     };
   });
@@ -788,4 +813,3 @@ export const getUniqueMealTimes = (data: DietEntry[]): string[] => {
   const mealTimes = new Set(data.map(entry => entry.meal_time).filter(Boolean) as string[]);
   return Array.from(mealTimes).sort();
 };
-

@@ -37,7 +37,7 @@ export interface ParsedExcelData {
   maxDate: Date | null;
 }
 
-export interface SiteIngredientsData { // Used for the simplified "Ingredient Totals" tab
+export interface SiteIngredientsData { // Used for the "Ingredient Totals" tab
   ingredient_name: string;
   base_uom_name: string;
   qty_per_day: number;
@@ -54,7 +54,7 @@ export interface DetailedRawMaterialData { // Used for "Raw Materials Required" 
   ingredient_name: string;
   base_uom_name: string;
   qty_per_day: number;
-  qty_for_target_duration: number; // Kept for consistency in processing function, UI will use qty_per_day
+  qty_for_target_duration: number; // Kept for consistency in processing function
 }
 
 export interface ProcessedDetailedRawMaterialResult {
@@ -86,9 +86,8 @@ export interface GroupedRecipe {
   total_qty_for_target_duration: number; // Total recipe quantity for selected display duration
   base_uom_name: string; // UOM for the total_recipe_qty
   ingredients: RecipeIngredientItem[];
-  consuming_species: string[]; // List of unique common names of species (for modal)
+  consuming_species_details: SpeciesConsumptionDetail[]; // Detailed breakdown for display
   consuming_animals_count: number; // Count of unique animals consuming this recipe
-  consuming_species_details: SpeciesConsumptionDetail[]; // Detailed breakdown
   scheduled_meal_times: string[]; // Unique meal times for this recipe
 }
 
@@ -115,10 +114,12 @@ export interface GroupedComboIngredient {
   total_qty_for_target_duration: number;
   base_uom_name: string;
   ingredients: ComboIngredientItem[];
-  consuming_species: string[]; // List of unique common names of species (for modal)
-  consuming_animals_count: number; // Count of unique animals consuming this combo group
-  consuming_species_details: SpeciesConsumptionDetail[]; // Detailed breakdown
-  scheduled_meal_times: string[]; // Unique meal times for this combo group
+  consuming_species_details: SpeciesConsumptionDetail[];
+  consuming_animals_count: number;
+  consuming_animal_ids: string[]; // New: List of actual animal IDs
+  consuming_enclosures: string[]; // New: List of unique enclosure names
+  consuming_enclosures_count: number; // New: Count of unique enclosures
+  scheduled_meal_times: string[];
 }
 
 export interface ProcessedComboIngredientsResult {
@@ -145,10 +146,12 @@ export interface GroupedChoiceIngredient {
   total_qty_for_target_duration: number;
   base_uom_name: string;
   ingredients: ChoiceIngredientItem[];
-  consuming_species: string[]; // List of unique common names of species (for modal)
-  consuming_animals_count: number; // Count of unique animals consuming this choice group
-  consuming_species_details: SpeciesConsumptionDetail[]; // Detailed breakdown
-  scheduled_meal_times: string[]; // Unique meal times for this choice group
+  consuming_species_details: SpeciesConsumptionDetail[];
+  consuming_animals_count: number;
+  consuming_animal_ids: string[]; // New: List of actual animal IDs
+  consuming_enclosures: string[]; // New: List of unique enclosure names
+  consuming_enclosures_count: number; // New: Count of unique enclosures
+  scheduled_meal_times: string[];
 }
 
 export interface ProcessedChoiceIngredientsResult {
@@ -163,4 +166,3 @@ export interface ColumnDefinition<T extends object> {
   header: string;
   cell?: (row: T) => React.ReactNode;
 }
-

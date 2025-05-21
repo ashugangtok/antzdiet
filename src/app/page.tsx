@@ -51,15 +51,11 @@ const getDayOptions = (autoDetectedInputDuration: number) => {
     const oneDayOption = { label: "1 Day", value: 1 };
 
     if (autoDetectedInputDuration === 7) {
-        // For 7-day input, all options including "1 Day" are potentially relevant for projection.
-        // If "1 Day" is not already the first, add it.
         if (!options.some(opt => opt.value === 1)) {
           // options.unshift(oneDayOption); // "1 Day" will be hidden if input is 7 days
         }
         return options;
-    } else { // autoDetectedInputDuration is 1
-        // For 1-day input, only "1 Day" is truly relevant, others are projections but might be disabled.
-        // Ensure "1 Day" is present.
+    } else { 
          if (!options.some(opt => opt.value === 1)) {
           options.unshift(oneDayOption);
         }
@@ -77,7 +73,7 @@ export default function DietInsightsPage() {
   const [choiceIngredientsData, setChoiceIngredientsData] = useState<ProcessedChoiceIngredientsResult | null>(null);
 
   const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false); // For initial file upload parsing
+  const [isLoading, setIsLoading] = useState(false); 
 
   const [isProcessingOverall, setIsProcessingOverall] = useState(false);
   const [isProcessingDetailedRaw, setIsProcessingDetailedRaw] = useState(false);
@@ -89,13 +85,11 @@ export default function DietInsightsPage() {
   const [progress, setProgress] = useState(0);
   const [activeTab, setActiveTab] = useState("upload");
 
-  // Store all unique values from the original dataset
   const [allSiteNames, setAllSiteNames] = useState<string[]>([]);
   const [allSpeciesNames, setAllSpeciesNames] = useState<string[]>([]);
   const [allClassNames, setAllClassNames] = useState<string[]>([]);
   const [allMealTimes, setAllMealTimes] = useState<string[]>([]);
 
-  // Store currently available unique values for filter dropdowns
   const [uniqueSiteNames, setUniqueSiteNames] = useState<string[]>([]);
   const [uniqueSpeciesNames, setUniqueSpeciesNames] = useState<string[]>([]);
   const [uniqueClassNames, setUniqueClassNames] = useState<string[]>([]);
@@ -115,6 +109,15 @@ export default function DietInsightsPage() {
   const [isSpeciesListModalOpen, setIsSpeciesListModalOpen] = useState(false);
   const [speciesListModalTitle, setSpeciesListModalTitle] = useState('');
   const [speciesListForModal, setSpeciesListForModal] = useState<SpeciesConsumptionDetail[]>([]);
+  
+  const [isAnimalListModalOpen, setIsAnimalListModalOpen] = useState(false);
+  const [animalListModalTitle, setAnimalListModalTitle] = useState('');
+  const [animalListForModal, setAnimalListForModal] = useState<string[]>([]);
+
+  const [isEnclosureListModalOpen, setIsEnclosureListModalOpen] = useState(false);
+  const [enclosureListModalTitle, setEnclosureListModalTitle] = useState('');
+  const [enclosureListForModal, setEnclosureListForModal] = useState<string[]>([]);
+
   const [expandedSpeciesText, setExpandedSpeciesText] = useState<Record<string, boolean>>({});
 
 
@@ -128,6 +131,18 @@ export default function DietInsightsPage() {
     setIsSpeciesListModalOpen(true);
   };
 
+  const openAnimalListModal = (title: string, animalIds: string[]) => {
+    setAnimalListModalTitle(title);
+    setAnimalListForModal(animalIds);
+    setIsAnimalListModalOpen(true);
+  };
+
+  const openEnclosureListModal = (title: string, enclosureNames: string[]) => {
+    setEnclosureListModalTitle(title);
+    setEnclosureListForModal(enclosureNames);
+    setIsEnclosureListModalOpen(true);
+  };
+
   const toggleSpeciesTextExpansion = (itemId: string) => {
     setExpandedSpeciesText(prev => ({ ...prev, [itemId]: !prev[itemId] }));
   };
@@ -137,7 +152,7 @@ export default function DietInsightsPage() {
     const toFormat = limit && details.length > limit ? details.slice(0, limit) : details;
     let formattedString = `(${toFormat.map(d => `${d.name} (${d.animal_count})`).join(', ')}`;
     if (limit && details.length > limit) {
-        // This part is now handled by the (view more) button logic, but good to keep the limit effective for initial display.
+      // This part is now handled by the (view more) button logic, but good to keep the limit effective for initial display.
     }
     formattedString += ')';
     return formattedString;
@@ -324,18 +339,16 @@ export default function DietInsightsPage() {
     try {
       const { data: parsedData, detectedInputDuration, minDate, maxDate } = await parseExcelFile(file);
       setProgress(60);
-      setDietData(parsedData); // This will trigger the main useEffect
+      setDietData(parsedData); 
       setAutoDetectedInputDuration(detectedInputDuration);
       setExcelMinDate(minDate);
       setExcelMaxDate(maxDate);
 
-      // Set initial "all" filter options
       setAllSiteNames(getAllUniqueSiteNames(parsedData));
       setAllSpeciesNames(getAllUniqueSpeciesNames(parsedData));
       setAllClassNames(getAllUniqueClassNames(parsedData));
       setAllMealTimes(getAllUniqueMealTimes(parsedData));
       
-      // Set initial unique filter options (will be refined by another useEffect)
       setUniqueSiteNames(getAllUniqueSiteNames(parsedData));
       setUniqueSpeciesNames(getAllUniqueSpeciesNames(parsedData));
       setUniqueClassNames(getAllUniqueClassNames(parsedData));
@@ -347,7 +360,7 @@ export default function DietInsightsPage() {
         if (targetDisplayDuration === 1 || !getDayOptions(7).some(opt => opt.value === targetDisplayDuration)) {
           newTargetDuration = 7;
         }
-      } else { // detectedInputDuration is 1
+      } else { 
         if (targetDisplayDuration > 1 || !getDayOptions(1).some(opt => opt.value === targetDisplayDuration)) {
            newTargetDuration = 1;
         }
@@ -367,7 +380,7 @@ export default function DietInsightsPage() {
         setIsLoading(false);
         setProgress(0);
         if (parsedDataSuccessfully) {
-             setActiveTab("raw-materials"); // Changed to raw-materials
+             setActiveTab("raw-materials"); 
         }
       }, 500);
     }
@@ -475,7 +488,6 @@ export default function DietInsightsPage() {
     processAllData();
   }, [dietData, selectedSiteNames, selectedSpeciesNames, selectedClassNames, selectedMealTimes, autoDetectedInputDuration, targetDisplayDuration]);
 
-  // Effect for updating dynamic filter options
   useEffect(() => {
     if (!dietData) {
       setUniqueSiteNames(allSiteNames);
@@ -485,11 +497,9 @@ export default function DietInsightsPage() {
       return;
     }
 
-    // Helper function to get unique values based on current selections in other filters
     const getDynamicUniqueValues = (
         dataToFilter: DietEntry[],
-        targetKey: keyof DietEntry, // The key for which we want unique values
-        // Current selections for other filters
+        targetKey: keyof DietEntry, 
         filterSite: string[],
         filterClass: string[],
         filterSpecies: string[],
@@ -497,7 +507,6 @@ export default function DietInsightsPage() {
     ): string[] => {
       let filtered = dataToFilter;
 
-      // Apply other active filters before extracting unique values for the targetKey
       if (targetKey !== 'site_name' && filterSite.length > 0) {
         filtered = filtered.filter(e => e.site_name && filterSite.includes(e.site_name));
       }
@@ -510,7 +519,6 @@ export default function DietInsightsPage() {
       if (targetKey !== 'meal_time' && filterMeal.length > 0) {
         filtered = filtered.filter(e => e.meal_time && filterMeal.includes(e.meal_time));
       }
-      // Extract unique values for the targetKey from the now-filtered data
       return Array.from(new Set(filtered.map(entry => entry[targetKey]).filter(Boolean) as string[])).sort();
     };
     
@@ -523,7 +531,7 @@ export default function DietInsightsPage() {
 
 
   const formattedDateRangeTitle = useMemo(() => {
-    const baseTitle = "Ingredient Totals"; 
+    const baseTitle = "Raw Material List"; 
     const suffix = "(Excluding Ingredients with Choice)";
 
     if (!excelMinDate) {
@@ -625,22 +633,22 @@ export default function DietInsightsPage() {
 
     displayableRecipes.forEach((recipe, index) => {
       if (index > 0) {
-        currentY += 15; // Add some space between recipes
+        currentY += 15; 
       }
       const speciesDetailsString = formatSpeciesDetails(recipe.consuming_species_details);
       const scheduledTimesString = recipe.scheduled_meal_times.length > 0 ? recipe.scheduled_meal_times.map(t => t.trim()).filter(Boolean).join(', ') : 'N/A';
 
       const ingredientsByCutSize = groupIngredientsByCutSize(recipe.ingredients);
-      let estimatedRecipeHeight = 50 + (speciesDetailsString.length / 50 * 4) + (scheduledTimesString.length / 50 * 4); // Approximate base height
+      let estimatedRecipeHeight = 50 + (speciesDetailsString.length / 50 * 4) + (scheduledTimesString.length / 50 * 4); 
       ingredientsByCutSize.forEach((ingredientsForCut, cutSize) => {
-        estimatedRecipeHeight += 10; // for cut size header
-        estimatedRecipeHeight += ingredientsForCut.length * 8; // for ingredient rows (approx)
+        estimatedRecipeHeight += 10; 
+        estimatedRecipeHeight += ingredientsForCut.length * 8; 
       });
 
 
-      if (currentY + estimatedRecipeHeight > doc.internal.pageSize.getHeight() - 20) { // Check if content fits
+      if (currentY + estimatedRecipeHeight > doc.internal.pageSize.getHeight() - 20) { 
         doc.addPage();
-        currentY = 22; // Reset Y for new page
+        currentY = 22; 
         doc.setFontSize(16);
         doc.text(formattedRecipesTitle + " (cont.)", 14, 16);
         doc.setFontSize(10);
@@ -665,9 +673,9 @@ export default function DietInsightsPage() {
       currentY += 5;
 
       const speciesText = `Consuming Species: ${recipe.consuming_species_details.length} ${formatSpeciesDetails(recipe.consuming_species_details)}`;
-      const splitSpeciesText = doc.splitTextToSize(speciesText, doc.internal.pageSize.getWidth() - 28); // Adjust width as needed
+      const splitSpeciesText = doc.splitTextToSize(speciesText, doc.internal.pageSize.getWidth() - 28); 
       doc.text(splitSpeciesText, 14, currentY);
-      currentY += (splitSpeciesText.length * 4) + 1; // Adjust spacing based on lines
+      currentY += (splitSpeciesText.length * 4) + 1; 
 
       doc.text(`Consuming Animals: ${recipe.consuming_animals_count}`, 14, currentY);
       currentY += 5;
@@ -706,7 +714,7 @@ export default function DietInsightsPage() {
           styles: { fontSize: 8, cellPadding: 1.5, overflow: 'linebreak' },
           columnStyles: {text: {cellWidth: 'auto'}},
         });
-        currentY = (doc as any).lastAutoTable.finalY + 5; // Update Y position after table
+        currentY = (doc as any).lastAutoTable.finalY + 5; 
       });
     });
 
@@ -792,7 +800,6 @@ export default function DietInsightsPage() {
     doc.save(fileName);
   };
 
-  // PDF Handlers for Combo Ingredients
   const handleAllCombosPdfDownload = () => {
     if (!displayableCombos || displayableCombos.length === 0) {
       alert("No combo ingredients with items to download based on current filters.");
@@ -809,9 +816,12 @@ export default function DietInsightsPage() {
       if (index > 0) currentY += 15;
       const speciesDetailsString = formatSpeciesDetails(group.consuming_species_details);
       const scheduledTimesString = group.scheduled_meal_times.length > 0 ? group.scheduled_meal_times.map(t => t.trim()).filter(Boolean).join(', ') : 'N/A';
+      const animalIdsString = group.consuming_animal_ids.join(', ');
+      const enclosuresString = group.consuming_enclosures.join(', ');
+
 
       const ingredientsByCutSize = groupIngredientsByCutSize(group.ingredients);
-      let estimatedHeight = 50 + (speciesDetailsString.length / 50 * 4) + (scheduledTimesString.length / 50 * 4);
+      let estimatedHeight = 70 + (speciesDetailsString.length / 50 * 4) + (scheduledTimesString.length / 50 * 4) + (animalIdsString.length / 50 * 4) + (enclosuresString.length / 50 * 4);
       ingredientsByCutSize.forEach((ingredientsForCut, cutSize) => {
         estimatedHeight += 10;
         estimatedHeight += ingredientsForCut.length * 8;
@@ -838,12 +848,15 @@ export default function DietInsightsPage() {
         : `Total for ${targetDisplayDuration} Day${targetDisplayDuration > 1 ? 's' : ''}: ${group.total_qty_for_target_duration.toFixed(4)} ${group.base_uom_name}`;
       doc.text(totalQtyText, 14, currentY);
       currentY += 5;
+      
+      doc.text(`Consuming Animals: ${group.consuming_animals_count}`, 14, currentY); currentY += 5;
+      
       const speciesText = `Consuming Species: ${group.consuming_species_details.length} ${formatSpeciesDetails(group.consuming_species_details)}`;
       const splitSpeciesText = doc.splitTextToSize(speciesText, doc.internal.pageSize.getWidth() - 28);
       doc.text(splitSpeciesText, 14, currentY);
       currentY += (splitSpeciesText.length * 4) + 1;
-      doc.text(`Consuming Animals: ${group.consuming_animals_count}`, 14, currentY);
-      currentY += 5;
+      
+      doc.text(`Consuming Enclosures: ${group.consuming_enclosures_count}`, 14, currentY); currentY += 5;
 
       const mealTimesTextPdf = `Scheduled Meal Times: ${scheduledTimesString}`;
       const splitMealTimesTextPdf = doc.splitTextToSize(mealTimesTextPdf, doc.internal.pageSize.getWidth() - 28);
@@ -884,10 +897,13 @@ export default function DietInsightsPage() {
       ? `Total / Day: ${group.total_qty_per_day.toFixed(4)} ${group.base_uom_name} | Total for ${targetDisplayDuration} Days: ${group.total_qty_for_target_duration.toFixed(4)} ${group.base_uom_name}`
       : `Total for ${targetDisplayDuration} Day${targetDisplayDuration > 1 ? 's' : ''}: ${group.total_qty_for_target_duration.toFixed(4)} ${group.base_uom_name}`;
     doc.text(totalQtyText, 14, currentY); currentY += 5;
+
+    doc.text(`Consuming Animals: ${group.consuming_animals_count}`, 14, currentY); currentY += 5;
     const speciesText = `Consuming Species: ${group.consuming_species_details.length} ${formatSpeciesDetails(group.consuming_species_details)}`;
     const splitSpeciesText = doc.splitTextToSize(speciesText, doc.internal.pageSize.getWidth() - 28);
     doc.text(splitSpeciesText, 14, currentY); currentY += (splitSpeciesText.length * 4) + 1;
-    doc.text(`Consuming Animals: ${group.consuming_animals_count}`, 14, currentY); currentY += 5;
+    doc.text(`Consuming Enclosures: ${group.consuming_enclosures_count}`, 14, currentY); currentY += 5;
+
 
     const scheduledTimesString = group.scheduled_meal_times.length > 0 ? group.scheduled_meal_times.map(t => t.trim()).filter(Boolean).join(', ') : 'N/A';
     const mealTimesTextPdf = `Scheduled Meal Times: ${scheduledTimesString}`;
@@ -913,7 +929,6 @@ export default function DietInsightsPage() {
     doc.save(`ComboGroup_${group.combo_group_name.replace(/\s+/g, '_')}_${targetDisplayDuration}Days.pdf`);
   };
 
-  // PDF Handlers for Choice Ingredients
   const handleAllChoicesPdfDownload = () => {
      if (!displayableChoices || displayableChoices.length === 0) {
       alert("No choice ingredients with items to download based on current filters.");
@@ -930,9 +945,11 @@ export default function DietInsightsPage() {
       if (index > 0) currentY += 15;
       const speciesDetailsString = formatSpeciesDetails(group.consuming_species_details);
       const scheduledTimesString = group.scheduled_meal_times.length > 0 ? group.scheduled_meal_times.map(t => t.trim()).filter(Boolean).join(', ') : 'N/A';
+      const animalIdsString = group.consuming_animal_ids.join(', ');
+      const enclosuresString = group.consuming_enclosures.join(', ');
 
       const ingredientsByCutSize = groupIngredientsByCutSize(group.ingredients);
-      let estimatedHeight = 50 + (speciesDetailsString.length / 50 * 4) + (scheduledTimesString.length / 50 * 4);
+      let estimatedHeight = 70 + (speciesDetailsString.length / 50 * 4) + (scheduledTimesString.length / 50 * 4) + (animalIdsString.length / 50 * 4) + (enclosuresString.length / 50 * 4);
       ingredientsByCutSize.forEach((ingredientsForCut, cutSize) => {
         estimatedHeight += 10;
         estimatedHeight += ingredientsForCut.length * 8;
@@ -954,10 +971,12 @@ export default function DietInsightsPage() {
         ? `Total / Day: ${group.total_qty_per_day.toFixed(4)} ${group.base_uom_name} | Total for ${targetDisplayDuration} Days: ${group.total_qty_for_target_duration.toFixed(4)} ${group.base_uom_name}`
         : `Total for ${targetDisplayDuration} Day${targetDisplayDuration > 1 ? 's' : ''}: ${group.total_qty_for_target_duration.toFixed(4)} ${group.base_uom_name}`;
       doc.text(totalQtyText, 14, currentY); currentY += 5;
+
+      doc.text(`Consuming Animals: ${group.consuming_animals_count}`, 14, currentY); currentY += 5;
       const speciesText = `Consuming Species: ${group.consuming_species_details.length} ${formatSpeciesDetails(group.consuming_species_details)}`;
       const splitSpeciesText = doc.splitTextToSize(speciesText, doc.internal.pageSize.getWidth() - 28);
       doc.text(splitSpeciesText, 14, currentY); currentY += (splitSpeciesText.length * 4) + 1;
-      doc.text(`Consuming Animals: ${group.consuming_animals_count}`, 14, currentY); currentY += 5;
+      doc.text(`Consuming Enclosures: ${group.consuming_enclosures_count}`, 14, currentY); currentY += 5;
 
       const mealTimesTextPdf = `Scheduled Meal Times: ${scheduledTimesString}`;
       const splitMealTimesTextPdf = doc.splitTextToSize(mealTimesTextPdf, doc.internal.pageSize.getWidth() - 28);
@@ -998,10 +1017,13 @@ export default function DietInsightsPage() {
       ? `Total / Day: ${group.total_qty_per_day.toFixed(4)} ${group.base_uom_name} | Total for ${targetDisplayDuration} Days: ${group.total_qty_for_target_duration.toFixed(4)} ${group.base_uom_name}`
       : `Total for ${targetDisplayDuration} Day${targetDisplayDuration > 1 ? 's' : ''}: ${group.total_qty_for_target_duration.toFixed(4)} ${group.base_uom_name}`;
     doc.text(totalQtyText, 14, currentY); currentY += 5;
+
+    doc.text(`Consuming Animals: ${group.consuming_animals_count}`, 14, currentY); currentY += 5;
     const speciesText = `Consuming Species: ${group.consuming_species_details.length} ${formatSpeciesDetails(group.consuming_species_details)}`;
     const splitSpeciesText = doc.splitTextToSize(speciesText, doc.internal.pageSize.getWidth() - 28);
     doc.text(splitSpeciesText, 14, currentY); currentY += (splitSpeciesText.length * 4) + 1;
-    doc.text(`Consuming Animals: ${group.consuming_animals_count}`, 14, currentY); currentY += 5;
+    doc.text(`Consuming Enclosures: ${group.consuming_enclosures_count}`, 14, currentY); currentY += 5;
+
 
     const scheduledTimesString = group.scheduled_meal_times.length > 0 ? group.scheduled_meal_times.map(t => t.trim()).filter(Boolean).join(', ') : 'N/A';
     const mealTimesTextPdf = `Scheduled Meal Times: ${scheduledTimesString}`;
@@ -1394,6 +1416,17 @@ export default function DietInsightsPage() {
                                 </>
                               )}
                             </div>
+                            <div>
+                              <span className="font-semibold">Consuming Animals: </span>
+                               <Button
+                                  variant="link"
+                                  className="p-0 h-auto text-sm text-primary font-bold"
+                                  onClick={() => openAnimalListModal(`Animals consuming ${group.combo_group_name}`, group.consuming_animal_ids)}
+                                  disabled={group.consuming_animals_count === 0}
+                                >
+                                  {group.consuming_animals_count}
+                                </Button>
+                            </div>
                            <div className="flex flex-row flex-wrap items-baseline">
                               <span className="font-semibold whitespace-nowrap mr-1">Consuming Species:</span>
                                 <Button
@@ -1416,7 +1449,15 @@ export default function DietInsightsPage() {
                                 )}
                               </div>
                             <div>
-                              <span className="font-semibold">Consuming Animals:</span> {group.consuming_animals_count}
+                              <span className="font-semibold">Consuming Enclosures: </span>
+                                <Button
+                                  variant="link"
+                                  className="p-0 h-auto text-sm text-primary font-bold"
+                                  onClick={() => openEnclosureListModal(`Enclosures for ${group.combo_group_name}`, group.consuming_enclosures)}
+                                  disabled={group.consuming_enclosures_count === 0}
+                                >
+                                  {group.consuming_enclosures_count}
+                                </Button>
                             </div>
                              <div>
                                 <span className="font-semibold">Scheduled Meal Times: </span>
@@ -1498,6 +1539,17 @@ export default function DietInsightsPage() {
                                 </>
                               )}
                             </div>
+                             <div>
+                              <span className="font-semibold">Consuming Animals: </span>
+                               <Button
+                                  variant="link"
+                                  className="p-0 h-auto text-sm text-primary font-bold"
+                                  onClick={() => openAnimalListModal(`Animals consuming ${group.choice_group_name}`, group.consuming_animal_ids)}
+                                  disabled={group.consuming_animals_count === 0}
+                                >
+                                  {group.consuming_animals_count}
+                                </Button>
+                            </div>
                             <div className="flex flex-row flex-wrap items-baseline">
                                 <span className="font-semibold whitespace-nowrap mr-1">Consuming Species:</span>
                                 <Button
@@ -1520,7 +1572,15 @@ export default function DietInsightsPage() {
                                 )}
                               </div>
                             <div>
-                              <span className="font-semibold">Consuming Animals:</span> {group.consuming_animals_count}
+                              <span className="font-semibold">Consuming Enclosures: </span>
+                                <Button
+                                  variant="link"
+                                  className="p-0 h-auto text-sm text-primary font-bold"
+                                  onClick={() => openEnclosureListModal(`Enclosures for ${group.choice_group_name}`, group.consuming_enclosures)}
+                                  disabled={group.consuming_enclosures_count === 0}
+                                >
+                                  {group.consuming_enclosures_count}
+                                </Button>
                             </div>
                              <div>
                                 <span className="font-semibold">Scheduled Meal Times: </span>
@@ -1632,7 +1692,6 @@ export default function DietInsightsPage() {
 
         </Tabs>
 
-        {/* Species List Modal Dialog */}
         <Dialog open={isSpeciesListModalOpen} onOpenChange={setIsSpeciesListModalOpen}>
           <DialogContent className="sm:max-w-md md:max-w-lg">
             <DialogHeader>
@@ -1660,6 +1719,60 @@ export default function DietInsightsPage() {
           </DialogContent>
         </Dialog>
 
+        <Dialog open={isAnimalListModalOpen} onOpenChange={setIsAnimalListModalOpen}>
+          <DialogContent className="sm:max-w-md md:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>{animalListModalTitle}</DialogTitle>
+              <DialogDescription>
+                List of unique animal IDs consuming this item.
+              </DialogDescription>
+            </DialogHeader>
+            <ScrollArea className="h-[300px] w-full rounded-md border p-4 my-4">
+              {animalListForModal.length > 0 ? (
+                animalListForModal.map((animalId, idx) => (
+                  <div key={idx} className="py-1 text-sm border-b last:border-b-0">
+                    {animalId}
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-muted-foreground">No specific animals recorded for this item.</p>
+              )}
+            </ScrollArea>
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button type="button" variant="outline">Close</Button>
+              </DialogClose>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={isEnclosureListModalOpen} onOpenChange={setIsEnclosureListModalOpen}>
+          <DialogContent className="sm:max-w-md md:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>{enclosureListModalTitle}</DialogTitle>
+              <DialogDescription>
+                List of unique enclosures associated with this item.
+              </DialogDescription>
+            </DialogHeader>
+            <ScrollArea className="h-[300px] w-full rounded-md border p-4 my-4">
+              {enclosureListForModal.length > 0 ? (
+                enclosureListForModal.map((enclosureName, idx) => (
+                  <div key={idx} className="py-1 text-sm border-b last:border-b-0">
+                    {enclosureName}
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-muted-foreground">No specific enclosures recorded for this item.</p>
+              )}
+            </ScrollArea>
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button type="button" variant="outline">Close</Button>
+              </DialogClose>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
       </main>
       <footer className="text-center py-6 mt-auto border-t">
         <p className="text-sm text-muted-foreground">
@@ -1669,4 +1782,3 @@ export default function DietInsightsPage() {
     </div>
   );
 }
-
