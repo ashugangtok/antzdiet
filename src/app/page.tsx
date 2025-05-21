@@ -25,10 +25,10 @@ import type {
 } from '@/types';
 import {
   parseExcelFile, processOverallIngredientTotals, processDetailedRawMaterialTotals, processRecipeData,
-  processComboIngredientUsage, getUniqueSiteNames as getAllUniqueSiteNames,
-  getUniqueSpeciesNames as getAllUniqueSpeciesNames,
-  getUniqueClassNames as getAllUniqueClassNames,
-  getUniqueMealTimes as getAllUniqueMealTimes,
+  processComboIngredientUsage, getUniqueSiteNames, // Corrected from getAllUniqueSiteNames
+  getUniqueSpeciesNames, // Corrected from getAllUniqueSpeciesNames
+  getUniqueClassNames, // Corrected from getAllUniqueClassNames
+  getUniqueMealTimes, // Corrected from getAllUniqueMealTimes
   processChoiceIngredientUsage,
   applyGlobalFilters, getGlobalCounts
 } from '@/lib/excelParser';
@@ -221,6 +221,35 @@ export default function DietInsightsPage() {
     return columns;
   }, [autoDetectedInputDuration, targetDisplayDuration]);
 
+
+  const comboIngredientDetailColumns = useMemo((): ColumnDefinition<ComboIngredientItem>[] => {
+    const columns: ColumnDefinition<ComboIngredientItem>[] = [
+      { key: 'ingredient_name', header: 'Ingredient Name' },
+      { key: 'preparation_type_name', header: 'Preparation Type' },
+      // Cut size is now a sub-header, so it's removed from individual ingredient columns here
+    ];
+    if (autoDetectedInputDuration === 7) {
+      columns.push({
+        key: 'qty_per_day',
+        header: 'Qty / Day',
+        cell: (item) => item.qty_per_day.toFixed(4)
+      });
+    } else {
+      columns.push({
+        key: 'qty_per_day',
+        header: `Qty for 1 Day`,
+        cell: (item) => item.qty_per_day.toFixed(4)
+      });
+    }
+    columns.push({
+      key: 'total_qty_for_animals',
+      header: `Total Qty for Animals (${targetDisplayDuration} Day${targetDisplayDuration > 1 ? 's' : ''})`,
+      cell: (item) => ((item.qty_for_target_duration * (item.parent_consuming_animals_count || 0)).toFixed(4))
+    });
+    columns.push({ key: 'base_uom_name', header: 'Base UOM' });
+    return columns;
+  }, [autoDetectedInputDuration, targetDisplayDuration]);
+
   
   const choiceIngredientDetailColumns = useMemo((): ColumnDefinition<ChoiceIngredientItem>[] => {
      const columns: ColumnDefinition<ChoiceIngredientItem>[] = [
@@ -314,23 +343,26 @@ export default function DietInsightsPage() {
       setExcelMinDate(minDate);
       setExcelMaxDate(maxDate);
 
-      setAllSiteNames(getAllUniqueSiteNames(parsedData));
-      setAllSpeciesNames(getAllUniqueSpeciesNames(parsedData));
-      setAllClassNames(getAllUniqueClassNames(parsedData));
-      setAllMealTimes(getAllUniqueMealTimes(parsedData));
+      setAllSiteNames(getUniqueSiteNames(parsedData));
+      setAllSpeciesNames(getUniqueSpeciesNames(parsedData));
+      setAllClassNames(getUniqueClassNames(parsedData));
+      setAllMealTimes(getUniqueMealTimes(parsedData));
       
-      setUniqueSiteNames(getAllUniqueSiteNames(parsedData));
-      setUniqueSpeciesNames(getAllUniqueSpeciesNames(parsedData));
-      setUniqueClassNames(getAllUniqueClassNames(parsedData));
-      setUniqueMealTimes(getAllUniqueMealTimes(parsedData));
+      // Initialize unique filter options with all possible values from the uploaded file
+      setUniqueSiteNames(getUniqueSiteNames(parsedData));
+      setUniqueSpeciesNames(getUniqueSpeciesNames(parsedData));
+      setUniqueClassNames(getUniqueClassNames(parsedData));
+      setUniqueMealTimes(getUniqueMealTimes(parsedData));
 
 
       let newTargetDuration = targetDisplayDuration;
       if (detectedInputDuration === 7) {
+        // If 7-day input, and current target is 1 or not in 7-day options, set to 7
         if (targetDisplayDuration === 1 || !getDayOptions(7).some(opt => opt.value === targetDisplayDuration)) {
           newTargetDuration = 7;
         }
-      } else { 
+      } else { // 1-day input
+         // If 1-day input, and current target is > 1 or not in 1-day options, set to 1
         if (targetDisplayDuration > 1 || !getDayOptions(1).some(opt => opt.value === targetDisplayDuration)) {
            newTargetDuration = 1;
         }
@@ -354,7 +386,7 @@ export default function DietInsightsPage() {
         }
       }, 500);
     }
-  }, [targetDisplayDuration]); 
+  }, [targetDisplayDuration]); // Added targetDisplayDuration as a dependency
 
  useEffect(() => {
     if (!dietData) {
@@ -367,12 +399,14 @@ export default function DietInsightsPage() {
     }
 
     const processAllData = async () => {
+      // Set all processing flags to true initially
       setIsProcessingOverall(true);
       setIsProcessingDetailedRaw(true);
       setIsProcessingRecipes(true);
       setIsProcessingCombo(true);
       setIsProcessingChoice(true);
 
+      // Apply global filters once
       const globallyFilteredData = applyGlobalFilters(
         dietData, selectedSiteNames, selectedClassNames, selectedSpeciesNames, selectedMealTimes
       );
@@ -408,7 +442,7 @@ export default function DietInsightsPage() {
 
       try {
         const recipeResult = processRecipeData(
-          dietData, 
+          dietData, // Pass original data for accurate consumer mapping
           globallyFilteredData,
           globalCounts.totalAnimals, globalCounts.totalSpecies,
           autoDetectedInputDuration, targetDisplayDuration
@@ -424,7 +458,7 @@ export default function DietInsightsPage() {
 
       try {
         const comboResult = processComboIngredientUsage(
-          dietData, 
+          dietData, // Pass original data
           globallyFilteredData,
           globalCounts.totalAnimals, globalCounts.totalSpecies,
           autoDetectedInputDuration, targetDisplayDuration
@@ -440,7 +474,7 @@ export default function DietInsightsPage() {
 
       try {
         const choiceResult = processChoiceIngredientUsage(
-          dietData, 
+          dietData, // Pass original data
           globallyFilteredData,
           globalCounts.totalAnimals, globalCounts.totalSpecies,
           autoDetectedInputDuration, targetDisplayDuration
@@ -460,6 +494,7 @@ export default function DietInsightsPage() {
 
   useEffect(() => {
     if (!dietData) {
+      // If no main data, reset unique filters to all possible values initially captured
       setUniqueSiteNames(allSiteNames);
       setUniqueClassNames(allClassNames);
       setUniqueSpeciesNames(allSpeciesNames);
@@ -467,9 +502,12 @@ export default function DietInsightsPage() {
       return;
     }
 
+    // Function to get unique values for a specific filter dropdown,
+    // considering the selections in OTHER active filters.
     const getDynamicUniqueValues = (
-        dataToFilter: DietEntry[],
-        targetKey: keyof DietEntry, 
+        dataToFilter: DietEntry[], // This should be the original full dietData
+        targetKey: keyof DietEntry, // The key for which to get unique values (e.g., 'site_name')
+        // Current selections for OTHER filters
         filterSite: string[],
         filterClass: string[],
         filterSpecies: string[],
@@ -477,6 +515,7 @@ export default function DietInsightsPage() {
     ): string[] => {
       let filtered = dataToFilter;
 
+      // Apply other active filters IF the targetKey is NOT the filter being applied
       if (targetKey !== 'site_name' && filterSite.length > 0) {
         filtered = filtered.filter(e => e.site_name && filterSite.includes(e.site_name));
       }
@@ -492,6 +531,7 @@ export default function DietInsightsPage() {
       return Array.from(new Set(filtered.map(entry => entry[targetKey]).filter(Boolean) as string[])).sort();
     };
     
+    // Update unique options for each filter based on selections in other filters
     setUniqueSiteNames(getDynamicUniqueValues(dietData, 'site_name', [], selectedClassNames, selectedSpeciesNames, selectedMealTimes));
     setUniqueClassNames(getDynamicUniqueValues(dietData, 'class_name', selectedSiteNames, [], selectedSpeciesNames, selectedMealTimes));
     setUniqueSpeciesNames(getDynamicUniqueValues(dietData, 'common_name', selectedSiteNames, selectedClassNames, [], selectedMealTimes));
@@ -1193,7 +1233,7 @@ export default function DietInsightsPage() {
                               )}
                             </div>
                             <div className="flex flex-row flex-wrap items-baseline">
-                              <span className="font-semibold whitespace-nowrap mr-1">Consuming Species:</span>
+                                <span className="font-semibold whitespace-nowrap mr-1">Consuming Species:</span>
                                 <Button
                                     variant="link"
                                     className="p-0 h-auto text-sm text-primary font-bold"
@@ -1373,12 +1413,12 @@ export default function DietInsightsPage() {
                           caption={`Ingredients for ${comboGroup.combo_group_name}`}
                         />
                         <div className="mt-4 p-2 border rounded-md">
-                          <h4 className="text-md font-semibold mb-2 text-muted-foreground">Summary per Meal Time:</h4>
+                          
                           <div className="overflow-x-auto">
                             <table className="w-full text-sm text-left">
                                 <thead className="text-xs text-muted-foreground uppercase bg-muted/50">
                                     <tr>
-                                        <th scope="col" className="px-3 py-2">Metric</th>
+                                        <th scope="col" className="px-3 py-2 text-muted-foreground"></th>
                                         {comboGroup.group_specific_meal_times.map(mealTime => (
                                             <th scope="col" key={mealTime} className="px-3 py-2 text-center">{mealTime}</th>
                                         ))}
@@ -1386,7 +1426,7 @@ export default function DietInsightsPage() {
                                 </thead>
                                 <tbody>
                                     <tr className="border-b">
-                                        <td className="px-3 py-2 font-medium"># of Animals</td>
+                                        <td className="px-3 py-2 font-medium text-muted-foreground"># of Animals</td>
                                         {comboGroup.group_specific_meal_times.map(mealTime => (
                                             <td key={mealTime} className="px-3 py-2 text-center">
                                                 <Button
@@ -1404,7 +1444,7 @@ export default function DietInsightsPage() {
                                         ))}
                                     </tr>
                                     <tr className="border-b">
-                                        <td className="px-3 py-2 font-medium"># of Species</td>
+                                        <td className="px-3 py-2 font-medium text-muted-foreground"># of Species</td>
                                          {comboGroup.group_specific_meal_times.map(mealTime => (
                                             <td key={mealTime} className="px-3 py-2 text-center">
                                                 <Button
@@ -1422,7 +1462,7 @@ export default function DietInsightsPage() {
                                         ))}
                                     </tr>
                                     <tr>
-                                        <td className="px-3 py-2 font-medium"># of Enclosures</td>
+                                        <td className="px-3 py-2 font-medium text-muted-foreground"># of Enclosures</td>
                                         {comboGroup.group_specific_meal_times.map(mealTime => (
                                             <td key={mealTime} className="px-3 py-2 text-center">
                                                  <Button
@@ -1734,3 +1774,4 @@ export default function DietInsightsPage() {
     </div>
   );
 }
+
