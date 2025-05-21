@@ -32,7 +32,7 @@ import {
   processChoiceIngredientUsage,
   applyGlobalFilters, getGlobalCounts
 } from '@/lib/excelParser';
-import { Leaf, Utensils, Filter, Loader2, ChevronsUpDown, Download, Info, Table as TableIcon } from 'lucide-react';
+import { Leaf, Utensils, Filter, Loader2, ChevronsUpDown, Download, Info } from 'lucide-react';
 // import { Sparkles } from 'lucide-react'; // For AI Summary
 import { format } from 'date-fns';
 import jsPDF from 'jspdf';
@@ -51,9 +51,7 @@ const getDayOptions = (autoDetectedInputDuration: number) => {
     const oneDayOption = { label: "1 Day", value: 1 };
 
     if (autoDetectedInputDuration === 7) {
-        if (!options.some(opt => opt.value === 1)) {
-          // options.unshift(oneDayOption); // "1 Day" will be hidden if input is 7 days
-        }
+        // "1 Day" will be hidden if input is 7 days
         return options;
     } else {
          if (!options.some(opt => opt.value === 1)) {
@@ -1112,7 +1110,10 @@ export default function DietInsightsPage() {
     const timeSlotColumns: ColumnDefinition<ComboIngredientItem>[] = comboGroup.group_specific_meal_times.map(mealTime => ({
       key: `meal_time_${mealTime}`,
       header: mealTime,
-      cell: (item) => item.quantities_by_meal_time[mealTime]?.toFixed(4) || '0.0000',
+      cell: (item) => {
+        const qty = item.quantities_by_meal_time[mealTime];
+        return qty?.toFixed(4) === '0.0000' ? '' : qty?.toFixed(4) || '';
+      },
     }));
     return [...staticColumns, ...timeSlotColumns];
   };
@@ -1213,7 +1214,7 @@ export default function DietInsightsPage() {
                     const ingredientsByCut = groupIngredientsByCutSize(recipe.ingredients);
                     return (
                     <Card key={itemKey} className="overflow-hidden shadow-md rounded-lg">
-                      <CardHeader className="bg-muted/50 flex flex-row items-center justify-between">
+                      <CardHeader className="bg-muted/50 flex flex-row items-center justify-between p-4">
                         <div>
                           <CardTitle className="text-lg font-semibold text-accent">
                             {recipe.recipe_name}{selectedMealTimes.length === 1 ? ` - ${selectedMealTimes[0]}` : ''}
@@ -1338,6 +1339,7 @@ export default function DietInsightsPage() {
                     comboGroup.group_specific_meal_times.forEach(mealTime => {
                         totalsByMealTime[mealTime] = comboGroup.ingredients.reduce((sum, ing) => sum + (ing.quantities_by_meal_time[mealTime] || 0), 0);
                     });
+                     const staticColSpan = columns.findIndex(col => col.key === `meal_time_${comboGroup.group_specific_meal_times[0]}`);
 
                     return (
                     <Card key={itemKey} className="overflow-hidden shadow-md rounded-lg">
@@ -1434,35 +1436,21 @@ export default function DietInsightsPage() {
                                 </tbody>
                                 <tfoot className="bg-muted/50 font-semibold">
                                     <tr>
-                                        <td className="p-2 text-right" colSpan={columns.findIndex(col => col.key === `meal_time_${comboGroup.group_specific_meal_times[0]}`)}>Total Qty Required:</td>
+                                        <td className="p-2 text-right font-medium text-muted-foreground" colSpan={staticColSpan < 0 ? columns.length : staticColSpan}>Total Qty Required:</td>
                                         {comboGroup.group_specific_meal_times.map(mealTime => (
                                             <td key={`total-${mealTime}`} className="p-2 text-left">
-                                                {totalsByMealTime[mealTime]?.toFixed(4) || '0.0000'}
+                                                {totalsByMealTime[mealTime]?.toFixed(4) === '0.0000' ? '' : totalsByMealTime[mealTime]?.toFixed(4) || ''}
                                             </td>
                                         ))}
-                                        {columns.length - comboGroup.group_specific_meal_times.length - columns.findIndex(col => col.key === `meal_time_${comboGroup.group_specific_meal_times[0]}`)-1 > 0 && (
-                                          <td colSpan={columns.length - comboGroup.group_specific_meal_times.length - columns.findIndex(col => col.key === `meal_time_${comboGroup.group_specific_meal_times[0]}`)-1}></td>
+                                        {/* Fill remaining static columns if any after meal times - should not happen with current column order */}
+                                        {staticColSpan >= 0 && columns.length - comboGroup.group_specific_meal_times.length - staticColSpan > 0 && (
+                                          <td colSpan={columns.length - comboGroup.group_specific_meal_times.length - staticColSpan}></td>
                                         )}
                                     </tr>
-                                </tfoot>
-                            </table>
-                        </div>
-                        <div className="mt-4 p-2 border rounded-md">
-                          <div className="overflow-x-auto">
-                            <table className="w-full text-sm text-left">
-                                <thead className="text-xs text-muted-foreground uppercase bg-muted/50">
-                                    <tr>
-                                        <th scope="col" className="px-3 py-2 text-muted-foreground">Time Slot</th>
+                                     <tr>
+                                        <td className="p-2 font-medium text-muted-foreground" colSpan={staticColSpan < 0 ? columns.length : staticColSpan}># of Animals</td>
                                         {comboGroup.group_specific_meal_times.map(mealTime => (
-                                            <th scope="col" key={mealTime} className="px-3 py-2 text-center">{mealTime}</th>
-                                        ))}
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr className="border-b">
-                                        <td className="px-3 py-2 font-medium text-muted-foreground"># of Animals</td>
-                                        {comboGroup.group_specific_meal_times.map(mealTime => (
-                                            <td key={mealTime} className="px-3 py-2 text-center">
+                                            <td key={`animals-${mealTime}`} className="p-2 text-left">
                                                 <Button
                                                     variant="link"
                                                     className="p-0 h-auto text-sm text-primary font-bold"
@@ -1477,10 +1465,10 @@ export default function DietInsightsPage() {
                                             </td>
                                         ))}
                                     </tr>
-                                    <tr className="border-b">
-                                        <td className="px-3 py-2 font-medium text-muted-foreground"># of Species</td>
+                                    <tr>
+                                        <td className="p-2 font-medium text-muted-foreground" colSpan={staticColSpan < 0 ? columns.length : staticColSpan}># of Species</td>
                                          {comboGroup.group_specific_meal_times.map(mealTime => (
-                                            <td key={mealTime} className="px-3 py-2 text-center">
+                                            <td key={`species-${mealTime}`} className="p-2 text-left">
                                                 <Button
                                                     variant="link"
                                                     className="p-0 h-auto text-sm text-primary font-bold"
@@ -1496,9 +1484,9 @@ export default function DietInsightsPage() {
                                         ))}
                                     </tr>
                                     <tr>
-                                        <td className="px-3 py-2 font-medium text-muted-foreground"># of Enclosures</td>
+                                        <td className="p-2 font-medium text-muted-foreground" colSpan={staticColSpan < 0 ? columns.length : staticColSpan}># of Enclosures</td>
                                         {comboGroup.group_specific_meal_times.map(mealTime => (
-                                            <td key={mealTime} className="px-3 py-2 text-center">
+                                            <td key={`enclosures-${mealTime}`} className="p-2 text-left">
                                                  <Button
                                                     variant="link"
                                                     className="p-0 h-auto text-sm text-primary font-bold"
@@ -1513,9 +1501,8 @@ export default function DietInsightsPage() {
                                             </td>
                                         ))}
                                     </tr>
-                                </tbody>
+                                </tfoot>
                             </table>
-                          </div>
                         </div>
                       </CardContent>
                     </Card>
@@ -1547,7 +1534,7 @@ export default function DietInsightsPage() {
                     const ingredientsByCut = groupIngredientsByCutSize(group.ingredients);
                     return (
                     <Card key={itemKey} className="overflow-hidden shadow-md rounded-lg">
-                      <CardHeader className="bg-muted/50 flex flex-row items-center justify-between">
+                      <CardHeader className="bg-muted/50 flex flex-row items-center justify-between p-4">
                         <div>
                           <CardTitle className="text-lg font-semibold text-accent">
                             {group.choice_group_name}{selectedMealTimes.length === 1 ? ` - ${selectedMealTimes[0]}` : ''}
