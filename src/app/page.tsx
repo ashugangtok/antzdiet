@@ -54,9 +54,9 @@ const getDayOptions = (autoDetectedInputDuration: number) => {
         // For 7-day input, all options including "1 Day" are potentially relevant for projection.
         // If "1 Day" is not already the first, add it.
         if (!options.some(opt => opt.value === 1)) {
-          options.unshift(oneDayOption);
+          // options.unshift(oneDayOption); // "1 Day" will be hidden if input is 7 days
         }
-        return options; // Return all options: 1, 7, 15, 30
+        return options;
     } else { // autoDetectedInputDuration is 1
         // For 1-day input, only "1 Day" is truly relevant, others are projections but might be disabled.
         // Ensure "1 Day" is present.
@@ -367,7 +367,7 @@ export default function DietInsightsPage() {
         setIsLoading(false);
         setProgress(0);
         if (parsedDataSuccessfully) {
-             setActiveTab("ingredient-totals");
+             setActiveTab("raw-materials"); // Changed to raw-materials
         }
       }, 500);
     }
@@ -1183,8 +1183,8 @@ export default function DietInsightsPage() {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 md:grid-cols-6 mb-6">
             <TabsTrigger value="upload">Upload Excel</TabsTrigger>
-            <TabsTrigger value="ingredient-totals" disabled={!dietData}>Ingredient Totals</TabsTrigger>
             <TabsTrigger value="raw-materials" disabled={!dietData}>Raw Materials Required</TabsTrigger>
+            <TabsTrigger value="ingredient-totals" disabled={!dietData}>Ingredient Totals</TabsTrigger>
             <TabsTrigger value="recipes" disabled={!dietData}>Recipes</TabsTrigger>
             <TabsTrigger value="combo-ingredients" disabled={!dietData}>Combo Ingredients</TabsTrigger>
             <TabsTrigger value="choice-ingredients" disabled={!dietData}>Choice Ingredients</TabsTrigger>
@@ -1228,17 +1228,6 @@ export default function DietInsightsPage() {
             )}
           </TabsContent>
 
-          <TabsContent value="ingredient-totals" className="space-y-6">
-            {renderFilterAndSummaryCards(overallIngredientsData, isProcessingOverall)}
-            <SectionCard
-              title={formattedDateRangeTitle}
-              data={overallIngredientsData?.data}
-              columns={overallIngredientsColumns}
-              viewId="ingredient_totals_report"
-              isLoading={isProcessingOverall || isLoading}
-            />
-          </TabsContent>
-
           <TabsContent value="raw-materials" className="space-y-6">
             {renderFilterAndSummaryCards(detailedRawMaterialsData, isProcessingDetailedRaw)}
             <SectionCard
@@ -1247,6 +1236,17 @@ export default function DietInsightsPage() {
               columns={detailedRawMaterialColumns}
               viewId="detailed_raw_materials_report"
               isLoading={isProcessingDetailedRaw || isLoading}
+            />
+          </TabsContent>
+
+          <TabsContent value="ingredient-totals" className="space-y-6">
+            {renderFilterAndSummaryCards(overallIngredientsData, isProcessingOverall)}
+            <SectionCard
+              title={formattedDateRangeTitle}
+              data={overallIngredientsData?.data}
+              columns={overallIngredientsColumns}
+              viewId="ingredient_totals_report"
+              isLoading={isProcessingOverall || isLoading}
             />
           </TabsContent>
 
