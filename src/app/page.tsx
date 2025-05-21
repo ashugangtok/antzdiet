@@ -32,7 +32,7 @@ import {
   processChoiceIngredientUsage,
   applyGlobalFilters, getGlobalCounts
 } from '@/lib/excelParser';
-import { Leaf, Utensils, Filter, Loader2, ChevronsUpDown, Download, Info } from 'lucide-react';
+import { Leaf, Utensils, Filter, Loader2, ChevronsUpDown, Download, Info, Table as TableIcon } from 'lucide-react';
 // import { Sparkles } from 'lucide-react'; // For AI Summary
 import { format } from 'date-fns';
 import jsPDF from 'jspdf';
@@ -224,34 +224,7 @@ export default function DietInsightsPage() {
     return columns;
   }, [autoDetectedInputDuration, targetDisplayDuration]);
 
-  const comboIngredientDetailColumns = useMemo((): ColumnDefinition<ComboIngredientItem>[] => {
-     const columns: ColumnDefinition<ComboIngredientItem>[] = [
-      { key: 'ingredient_name', header: 'Ingredient Name' },
-      { key: 'preparation_type_name', header: 'Preparation Type' },
-      { key: 'cut_size_name', header: 'Cut Size' },
-    ];
-    if (autoDetectedInputDuration === 7) {
-      columns.push({
-        key: 'qty_per_day',
-        header: 'Qty / Day',
-        cell: (item) => item.qty_per_day.toFixed(4)
-      });
-    } else {
-      columns.push({
-        key: 'qty_per_day',
-        header: `Qty for 1 Day`,
-        cell: (item) => item.qty_per_day.toFixed(4)
-      });
-    }
-    columns.push({
-        key: 'total_qty_for_animals',
-        header: `Total Qty for Animals (${targetDisplayDuration} Day${targetDisplayDuration > 1 ? 's' : ''})`,
-        cell: (item) => ((item.qty_for_target_duration * (item.parent_consuming_animals_count || 0)).toFixed(4))
-    });
-    columns.push({ key: 'base_uom_name', header: 'Base UOM' });
-    return columns;
-  }, [autoDetectedInputDuration, targetDisplayDuration]);
-
+  
   const choiceIngredientDetailColumns = useMemo((): ColumnDefinition<ChoiceIngredientItem>[] => {
      const columns: ColumnDefinition<ChoiceIngredientItem>[] = [
       { key: 'ingredient_name', header: 'Ingredient Name' },
@@ -805,128 +778,21 @@ export default function DietInsightsPage() {
       alert("No combo ingredients with items to download based on current filters.");
       return;
     }
-
-    const doc = new jsPDF();
-    let currentY = 22;
-    doc.setFontSize(16);
-    doc.text(formattedComboTitle, 14, 16);
-    doc.setFontSize(10);
-
-    displayableCombos.forEach((group, index) => {
-      if (index > 0) currentY += 15;
-      const speciesDetailsString = formatSpeciesDetails(group.consuming_species_details);
-      const scheduledTimesString = group.scheduled_meal_times.length > 0 ? group.scheduled_meal_times.map(t => t.trim()).filter(Boolean).join(', ') : 'N/A';
-      const animalIdsString = group.consuming_animal_ids.join(', ');
-      const enclosuresString = group.consuming_enclosures.join(', ');
-
-
-      const ingredientsByCutSize = groupIngredientsByCutSize(group.ingredients);
-      let estimatedHeight = 70 + (speciesDetailsString.length / 50 * 4) + (scheduledTimesString.length / 50 * 4) + (animalIdsString.length / 50 * 4) + (enclosuresString.length / 50 * 4);
-      ingredientsByCutSize.forEach((ingredientsForCut, cutSize) => {
-        estimatedHeight += 10;
-        estimatedHeight += ingredientsForCut.length * 8;
-      });
-
-      if (currentY + estimatedHeight > doc.internal.pageSize.getHeight() - 20) {
-        doc.addPage();
-        currentY = 22;
-        doc.setFontSize(16);
-        doc.text(formattedComboTitle + " (cont.)", 14, 16);
-        doc.setFontSize(10);
-      }
-      doc.setFontSize(12);
-      let groupTitle = group.combo_group_name;
-      if (selectedMealTimes.length === 1) {
-        groupTitle += ` - ${selectedMealTimes[0]}`;
-      }
-      doc.text(groupTitle, 14, currentY);
-
-      currentY += 7;
-      doc.setFontSize(8);
-      let totalQtyText = autoDetectedInputDuration === 7
-        ? `Total / Day: ${group.total_qty_per_day.toFixed(4)} ${group.base_uom_name} | Total for ${targetDisplayDuration} Days: ${group.total_qty_for_target_duration.toFixed(4)} ${group.base_uom_name}`
-        : `Total for ${targetDisplayDuration} Day${targetDisplayDuration > 1 ? 's' : ''}: ${group.total_qty_for_target_duration.toFixed(4)} ${group.base_uom_name}`;
-      doc.text(totalQtyText, 14, currentY);
-      currentY += 5;
-      
-      doc.text(`Consuming Animals: ${group.consuming_animals_count}`, 14, currentY); currentY += 5;
-      
-      const speciesText = `Consuming Species: ${group.consuming_species_details.length} ${formatSpeciesDetails(group.consuming_species_details)}`;
-      const splitSpeciesText = doc.splitTextToSize(speciesText, doc.internal.pageSize.getWidth() - 28);
-      doc.text(splitSpeciesText, 14, currentY);
-      currentY += (splitSpeciesText.length * 4) + 1;
-      
-      doc.text(`Consuming Enclosures: ${group.consuming_enclosures_count}`, 14, currentY); currentY += 5;
-
-      const mealTimesTextPdf = `Scheduled Meal Times: ${scheduledTimesString}`;
-      const splitMealTimesTextPdf = doc.splitTextToSize(mealTimesTextPdf, doc.internal.pageSize.getWidth() - 28);
-      doc.text(splitMealTimesTextPdf, 14, currentY);
-      currentY += (splitMealTimesTextPdf.length * 4) + 2;
-
-
-      const tableColumnNames = comboIngredientDetailColumns.map(col => col.header);
-      ingredientsByCutSize.forEach((ingredientsForCut, cutSize) => {
-        doc.setFontSize(10);
-        doc.text(`Cut Size: ${cutSize}`, 14, currentY);
-        currentY += 5;
-        doc.setFontSize(8);
-        (doc as any).autoTable({
-          head: [tableColumnNames],
-          body: ingredientsForCut.map(item => comboIngredientDetailColumns.map(col => col.cell ? String(col.cell(item) ?? '') : String((item as any)[col.key as string] ?? ''))),
-          startY: currentY, theme: 'striped', headStyles: { fillColor: [75, 85, 99] }, styles: { fontSize: 8, cellPadding: 1.5, overflow: 'linebreak' }, columnStyles: {text: {cellWidth: 'auto'}},
-        });
-        currentY = (doc as any).lastAutoTable.finalY + 5;
-      });
-    });
-    doc.save('all_combo_ingredients_report.pdf');
+    // This will be refactored to use the new pivoted structure.
+    // For now, let's keep it simple or placeholder.
+    alert("Pivoted PDF for All Combos - To be implemented based on new table structure.");
+    // const doc = new jsPDF();
+    // ... (old logic or new pivoted logic)
+    // doc.save('all_combo_ingredients_report.pdf');
   };
 
   const handleSingleComboPdfDownload = (group: GroupedComboIngredient) => {
     if (!group || group.ingredients.length === 0) return alert("No ingredient data for this combo group to download.");
-    const doc = new jsPDF();
-    let currentY = 22;
-    doc.setFontSize(16);
-    let groupTitle = group.combo_group_name;
-    if (selectedMealTimes.length === 1) {
-        groupTitle += ` - ${selectedMealTimes[0]}`;
-    }
-    doc.text(groupTitle, 14, 16);
-
-    doc.setFontSize(8); currentY = 22;
-    let totalQtyText = autoDetectedInputDuration === 7
-      ? `Total / Day: ${group.total_qty_per_day.toFixed(4)} ${group.base_uom_name} | Total for ${targetDisplayDuration} Days: ${group.total_qty_for_target_duration.toFixed(4)} ${group.base_uom_name}`
-      : `Total for ${targetDisplayDuration} Day${targetDisplayDuration > 1 ? 's' : ''}: ${group.total_qty_for_target_duration.toFixed(4)} ${group.base_uom_name}`;
-    doc.text(totalQtyText, 14, currentY); currentY += 5;
-
-    doc.text(`Consuming Animals: ${group.consuming_animals_count}`, 14, currentY); currentY += 5;
-    const speciesText = `Consuming Species: ${group.consuming_species_details.length} ${formatSpeciesDetails(group.consuming_species_details)}`;
-    const splitSpeciesText = doc.splitTextToSize(speciesText, doc.internal.pageSize.getWidth() - 28);
-    doc.text(splitSpeciesText, 14, currentY); currentY += (splitSpeciesText.length * 4) + 1;
-    doc.text(`Consuming Enclosures: ${group.consuming_enclosures_count}`, 14, currentY); currentY += 5;
-
-
-    const scheduledTimesString = group.scheduled_meal_times.length > 0 ? group.scheduled_meal_times.map(t => t.trim()).filter(Boolean).join(', ') : 'N/A';
-    const mealTimesTextPdf = `Scheduled Meal Times: ${scheduledTimesString}`;
-    const splitMealTimesTextPdf = doc.splitTextToSize(mealTimesTextPdf, doc.internal.pageSize.getWidth() - 28);
-    doc.text(splitMealTimesTextPdf, 14, currentY);
-    currentY += (splitMealTimesTextPdf.length * 4) + 2;
-
-    const tableColumnNames = comboIngredientDetailColumns.map(col => col.header);
-    const ingredientsByCutSize = groupIngredientsByCutSize(group.ingredients);
-
-    ingredientsByCutSize.forEach((ingredientsForCut, cutSize) => {
-        doc.setFontSize(10);
-        doc.text(`Cut Size: ${cutSize}`, 14, currentY);
-        currentY += 5;
-        doc.setFontSize(8);
-        (doc as any).autoTable({
-          head: [tableColumnNames],
-          body: ingredientsForCut.map(item => comboIngredientDetailColumns.map(col => col.cell ? String(col.cell(item) ?? '') : String((item as any)[col.key as string] ?? ''))),
-          startY: currentY, theme: 'striped', headStyles: { fillColor: [75, 85, 99] }, styles: { fontSize: 8, cellPadding: 1.5, overflow: 'linebreak' }, columnStyles: {text: {cellWidth: 'auto'}},
-        });
-        currentY = (doc as any).lastAutoTable.finalY + 5;
-    });
-    doc.save(`ComboGroup_${group.combo_group_name.replace(/\s+/g, '_')}_${targetDisplayDuration}Days.pdf`);
+     // This will be refactored to use the new pivoted structure.
+    alert("Pivoted PDF for Single Combo - To be implemented based on new table structure.");
+    // const doc = new jsPDF();
+    // ... (old logic or new pivoted logic)
+    // doc.save(`ComboGroup_${group.combo_group_name.replace(/\s+/g, '_')}_${targetDisplayDuration}Days.pdf`);
   };
 
   const handleAllChoicesPdfDownload = () => {
@@ -1199,6 +1065,23 @@ export default function DietInsightsPage() {
     </>
   );
 
+  // Dynamic columns for Combo Ingredients table
+  const comboIngredientPivotColumns = (comboGroup: GroupedComboIngredient): ColumnDefinition<ComboIngredientItem>[] => {
+    const staticColumns: ColumnDefinition<ComboIngredientItem>[] = [
+      { key: 'ingredient_name', header: 'Ingredients Name' },
+      { key: 'cut_size_name', header: 'Cut Sizes' },
+      { key: 'preparation_type_name', header: 'Preparation Types' },
+      { key: 'base_uom_name', header: 'Base UOM' },
+    ];
+    const timeSlotColumns: ColumnDefinition<ComboIngredientItem>[] = comboGroup.group_specific_meal_times.map(mealTime => ({
+      key: `meal_time_${mealTime}`,
+      header: mealTime,
+      cell: (item) => item.quantities_by_meal_time[mealTime]?.toFixed(4) || '0.0000',
+    }));
+    return [...staticColumns, ...timeSlotColumns];
+  };
+
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <main className="container mx-auto p-4 md:p-8 space-y-8">
@@ -1334,7 +1217,26 @@ export default function DietInsightsPage() {
                                 )}
                             </div>
                             <div>
-                              <span className="font-semibold">Consuming Animals:</span> {recipe.consuming_animals_count}
+                              <span className="font-semibold">Consuming Animals: </span>
+                               <Button
+                                  variant="link"
+                                  className="p-0 h-auto text-sm text-primary font-bold"
+                                  onClick={() => openAnimalListModal(`Animals consuming ${recipe.recipe_name}`, recipe.consuming_animal_ids)}
+                                  disabled={recipe.consuming_animals_count === 0}
+                                >
+                                  {recipe.consuming_animals_count}
+                                </Button>
+                            </div>
+                             <div>
+                              <span className="font-semibold">Consuming Enclosures: </span>
+                                <Button
+                                  variant="link"
+                                  className="p-0 h-auto text-sm text-primary font-bold"
+                                  onClick={() => openEnclosureListModal(`Enclosures for ${recipe.recipe_name}`, recipe.consuming_enclosures)}
+                                  disabled={recipe.consuming_enclosures_count === 0}
+                                >
+                                  {recipe.consuming_enclosures_count}
+                                </Button>
                             </div>
                              <div>
                                 <span className="font-semibold">Scheduled Meal Times: </span>
@@ -1378,7 +1280,7 @@ export default function DietInsightsPage() {
 
           <TabsContent value="combo-ingredients" className="space-y-6">
             {renderFilterAndSummaryCards(comboIngredientsData, isProcessingCombo)}
-            <SectionCard
+             <SectionCard
               title={formattedComboTitle}
               viewId="combo_ingredients_report"
               isLoading={isProcessingCombo || isLoading}
@@ -1393,104 +1295,104 @@ export default function DietInsightsPage() {
                 <p className="text-muted-foreground p-4 text-center">No combo ingredient data available based on current filters.</p>
               ) : (
                 <div className="space-y-6">
-                  {displayableCombos.map((group, index) => {
-                     const itemKey = `combo-${group.combo_group_name.replace(/\s+/g, '-')}-${index}`;
-                    const ingredientsByCut = groupIngredientsByCutSize(group.ingredients);
+                  {displayableCombos.map((comboGroup) => {
+                    const itemKey = `combo-${comboGroup.combo_group_name.replace(/\s+/g, '-')}`;
                     return (
                     <Card key={itemKey} className="overflow-hidden shadow-md rounded-lg">
-                      <CardHeader className="bg-muted/50 flex flex-row items-center justify-between">
-                        <div>
-                          <CardTitle className="text-lg font-semibold text-accent">
-                            {group.combo_group_name}{selectedMealTimes.length === 1 ? ` - ${selectedMealTimes[0]}` : ''}
-                          </CardTitle>
-                          <CardDescription className="text-sm text-foreground space-y-1 mt-1">
-                            <div>
-                              {autoDetectedInputDuration === 7 ? (
-                                <>
-                                  Total / Day: {group.total_qty_per_day.toFixed(4)} {group.base_uom_name} <br />
-                                  Total for {targetDisplayDuration} Days: {group.total_qty_for_target_duration.toFixed(4)} {group.base_uom_name}
-                                </>
-                              ) : (
-                                <>
-                                  Total for {targetDisplayDuration} Day{targetDisplayDuration > 1 ? 's' : ''}: {group.total_qty_for_target_duration.toFixed(4)} {group.base_uom_name}
-                                </>
-                              )}
-                            </div>
-                            <div>
-                              <span className="font-semibold">Consuming Animals: </span>
-                               <Button
-                                  variant="link"
-                                  className="p-0 h-auto text-sm text-primary font-bold"
-                                  onClick={() => openAnimalListModal(`Animals consuming ${group.combo_group_name}`, group.consuming_animal_ids)}
-                                  disabled={group.consuming_animals_count === 0}
-                                >
-                                  {group.consuming_animals_count}
-                                </Button>
-                            </div>
-                           <div className="flex flex-row flex-wrap items-baseline">
-                              <span className="font-semibold whitespace-nowrap mr-1">Consuming Species:</span>
-                                <Button
-                                    variant="link"
-                                    className="p-0 h-auto text-sm text-primary font-bold"
-                                    onClick={() => openSpeciesListModal(`Species consuming ${group.combo_group_name}`, group.consuming_species_details)}
-                                    disabled={group.consuming_species_details.length === 0}
-                                >
-                                    {group.consuming_species_details.length}
-                                </Button>
-                                {group.consuming_species_details.length > 0 && (
-                                    <span className={`ml-1 ${!expandedSpeciesText[itemKey] ? "line-clamp-2" : ""}`}>
-                                      {formatSpeciesDetails(group.consuming_species_details, !expandedSpeciesText[itemKey] ? 10 : undefined)}
-                                    </span>
-                                )}
-                                {group.consuming_species_details.length > 10 && (
-                                    <Button variant="link" className="p-0 h-auto text-xs ml-1 whitespace-nowrap" onClick={() => toggleSpeciesTextExpansion(itemKey)}>
-                                        {expandedSpeciesText[itemKey] ? "(view less)" : "(view more)"}
-                                    </Button>
-                                )}
-                              </div>
-                            <div>
-                              <span className="font-semibold">Consuming Enclosures: </span>
-                                <Button
-                                  variant="link"
-                                  className="p-0 h-auto text-sm text-primary font-bold"
-                                  onClick={() => openEnclosureListModal(`Enclosures for ${group.combo_group_name}`, group.consuming_enclosures)}
-                                  disabled={group.consuming_enclosures_count === 0}
-                                >
-                                  {group.consuming_enclosures_count}
-                                </Button>
-                            </div>
-                             <div>
-                                <span className="font-semibold">Scheduled Meal Times: </span>
-                                <div className="inline-flex flex-wrap gap-1 items-center">
-                                {group.scheduled_meal_times && group.scheduled_meal_times.length > 0
-                                  ? group.scheduled_meal_times.map(time => <Badge key={time} variant="secondary" className="mr-1 mb-1">{time}</Badge>)
-                                  : <Badge variant="outline">N/A</Badge>}
-                                </div>
-                              </div>
-                          </CardDescription>
-                        </div>
+                      <CardHeader className="bg-card flex flex-row items-center justify-between p-4">
+                        <CardTitle className="text-xl font-semibold text-accent">
+                           {comboGroup.combo_group_name}
+                           {selectedMealTimes.length === 1 ? ` - ${selectedMealTimes[0]}` : ''}
+                        </CardTitle>
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => handleSingleComboPdfDownload(group)}
-                          aria-label={`Download PDF for ${group.combo_group_name}`}
-                          disabled={isProcessingCombo || isLoading || group.ingredients.length === 0}
+                          onClick={() => handleSingleComboPdfDownload(comboGroup)}
+                          aria-label={`Download PDF for ${comboGroup.combo_group_name}`}
+                          disabled={isProcessingCombo || isLoading || comboGroup.ingredients.length === 0}
                         >
                           <Download className="mr-2 h-4 w-4" />
                           PDF
                         </Button>
                       </CardHeader>
-                      <CardContent className="p-0">
-                        {Array.from(ingredientsByCut.entries()).map(([cutSize, ingredientsForCut]) => (
-                          <div key={cutSize} className="p-4 border-b last:border-b-0">
-                            <h4 className="text-md font-semibold mb-2 text-muted-foreground">Cut Size: {cutSize}</h4>
-                            <DataTable
-                              columns={comboIngredientDetailColumns}
-                              data={ingredientsForCut}
-                            />
+                      <CardContent className="p-4 space-y-4">
+                        <DataTable
+                          columns={comboIngredientPivotColumns(comboGroup)}
+                          data={comboGroup.ingredients}
+                          caption={`Ingredients for ${comboGroup.combo_group_name}`}
+                        />
+                        {/* Summary rows like # of Animals per meal time */}
+                        <div className="mt-4 p-2 border rounded-md">
+                          <h4 className="text-md font-semibold mb-2 text-muted-foreground">Summary per Meal Time:</h4>
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm text-left">
+                                <thead className="text-xs text-muted-foreground uppercase bg-muted/50">
+                                    <tr>
+                                        <th scope="col" className="px-3 py-2">Metric</th>
+                                        {comboGroup.group_specific_meal_times.map(mealTime => (
+                                            <th scope="col" key={mealTime} className="px-3 py-2 text-center">{mealTime}</th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr className="border-b">
+                                        <td className="px-3 py-2 font-medium"># of Animals</td>
+                                        {comboGroup.group_specific_meal_times.map(mealTime => (
+                                            <td key={mealTime} className="px-3 py-2 text-center">
+                                                <Button
+                                                    variant="link"
+                                                    className="p-0 h-auto text-sm text-primary font-bold"
+                                                    onClick={() => openAnimalListModal(
+                                                        `Animals for ${comboGroup.combo_group_name} at ${mealTime}`,
+                                                        comboGroup.animals_per_meal_time[mealTime] || []
+                                                    )}
+                                                    disabled={(comboGroup.animals_per_meal_time[mealTime] || []).length === 0}
+                                                >
+                                                    {(comboGroup.animals_per_meal_time[mealTime] || []).length}
+                                                </Button>
+                                            </td>
+                                        ))}
+                                    </tr>
+                                    <tr className="border-b">
+                                        <td className="px-3 py-2 font-medium"># of Species</td>
+                                         {comboGroup.group_specific_meal_times.map(mealTime => (
+                                            <td key={mealTime} className="px-3 py-2 text-center">
+                                                <Button
+                                                    variant="link"
+                                                    className="p-0 h-auto text-sm text-primary font-bold"
+                                                    onClick={() => openSpeciesListModal(
+                                                        `Species for ${comboGroup.combo_group_name} at ${mealTime}`,
+                                                        comboGroup.species_details_per_meal_time[mealTime] || []
+                                                    )}
+                                                    disabled={(comboGroup.species_details_per_meal_time[mealTime] || []).length === 0}
+                                                >
+                                                    {(comboGroup.species_details_per_meal_time[mealTime] || []).length}
+                                                </Button>
+                                            </td>
+                                        ))}
+                                    </tr>
+                                    <tr>
+                                        <td className="px-3 py-2 font-medium"># of Enclosures</td>
+                                        {comboGroup.group_specific_meal_times.map(mealTime => (
+                                            <td key={mealTime} className="px-3 py-2 text-center">
+                                                 <Button
+                                                    variant="link"
+                                                    className="p-0 h-auto text-sm text-primary font-bold"
+                                                    onClick={() => openEnclosureListModal(
+                                                        `Enclosures for ${comboGroup.combo_group_name} at ${mealTime}`,
+                                                        comboGroup.enclosures_per_meal_time[mealTime] || []
+                                                    )}
+                                                    disabled={(comboGroup.enclosures_per_meal_time[mealTime] || []).length === 0}
+                                                >
+                                                    {(comboGroup.enclosures_per_meal_time[mealTime] || []).length}
+                                                 </Button>
+                                            </td>
+                                        ))}
+                                    </tr>
+                                </tbody>
+                            </table>
                           </div>
-                        ))}
-                        {group.ingredients.length === 0 && <p className="text-muted-foreground p-4 text-center">No ingredients for this combo group.</p>}
+                        </div>
                       </CardContent>
                     </Card>
                   )})}
@@ -1539,19 +1441,8 @@ export default function DietInsightsPage() {
                                 </>
                               )}
                             </div>
-                             <div>
-                              <span className="font-semibold">Consuming Animals: </span>
-                               <Button
-                                  variant="link"
-                                  className="p-0 h-auto text-sm text-primary font-bold"
-                                  onClick={() => openAnimalListModal(`Animals consuming ${group.choice_group_name}`, group.consuming_animal_ids)}
-                                  disabled={group.consuming_animals_count === 0}
-                                >
-                                  {group.consuming_animals_count}
-                                </Button>
-                            </div>
                             <div className="flex flex-row flex-wrap items-baseline">
-                                <span className="font-semibold whitespace-nowrap mr-1">Consuming Species:</span>
+                              <span className="font-semibold whitespace-nowrap mr-1">Consuming Species:</span>
                                 <Button
                                     variant="link"
                                     className="p-0 h-auto text-sm text-primary font-bold"
@@ -1571,6 +1462,17 @@ export default function DietInsightsPage() {
                                     </Button>
                                 )}
                               </div>
+                            <div>
+                              <span className="font-semibold">Consuming Animals: </span>
+                               <Button
+                                  variant="link"
+                                  className="p-0 h-auto text-sm text-primary font-bold"
+                                  onClick={() => openAnimalListModal(`Animals consuming ${group.choice_group_name}`, group.consuming_animal_ids)}
+                                  disabled={group.consuming_animals_count === 0}
+                                >
+                                  {group.consuming_animals_count}
+                                </Button>
+                            </div>
                             <div>
                               <span className="font-semibold">Consuming Enclosures: </span>
                                 <Button
@@ -1782,3 +1684,4 @@ export default function DietInsightsPage() {
     </div>
   );
 }
+
