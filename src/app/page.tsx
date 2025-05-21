@@ -13,7 +13,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Label } from "@/components/ui/label";
 import { Card, CardHeader, CardContent, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { DataTable } from '@/components/DataTable';
+import { DataTable } from '@/components/DataTable'; // Keep this, might be used if we revert some custom tables
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import type {
@@ -147,7 +147,7 @@ export default function DietInsightsPage() {
 
   const formatSpeciesDetails = (details: SpeciesConsumptionDetail[], limit?: number): string => {
     if (!details || details.length === 0) return "";
-    const toFormat = limit && details.length > limit ? details.slice(0, limit) : details;
+    const toFormat = limit && details.length > limit && limit > 0 ? details.slice(0, limit) : details;
     let formattedString = `(${toFormat.map(d => `${d.name} (${d.animal_count})`).join(', ')}`;
     formattedString += ')';
     return formattedString;
@@ -1335,11 +1335,23 @@ export default function DietInsightsPage() {
                   {displayableCombos.map((comboGroup) => {
                     const itemKey = `combo-${comboGroup.combo_group_name.replace(/\s+/g, '-')}`;
                     const columns = comboIngredientPivotColumns(comboGroup);
-                    const totalsByMealTime: Record<string, number> = {};
-                    comboGroup.group_specific_meal_times.forEach(mealTime => {
-                        totalsByMealTime[mealTime] = comboGroup.ingredients.reduce((sum, ing) => sum + (ing.quantities_by_meal_time[mealTime] || 0), 0);
+                    const totalsByMealTimeAndUOM: Record<string, Record<string, number>> = {};
+                    const allUOMsInGroup = new Set<string>();
+
+                    comboGroup.ingredients.forEach(ingredient => {
+                        allUOMsInGroup.add(ingredient.base_uom_name);
+                        Object.entries(ingredient.quantities_by_meal_time).forEach(([mealTime, qty]) => {
+                            if (!totalsByMealTimeAndUOM[mealTime]) {
+                                totalsByMealTimeAndUOM[mealTime] = {};
+                            }
+                            if (!totalsByMealTimeAndUOM[mealTime][ingredient.base_uom_name]) {
+                                totalsByMealTimeAndUOM[mealTime][ingredient.base_uom_name] = 0;
+                            }
+                            totalsByMealTimeAndUOM[mealTime][ingredient.base_uom_name] += qty;
+                        });
                     });
-                     const staticColSpan = columns.findIndex(col => col.key === `meal_time_${comboGroup.group_specific_meal_times[0]}`);
+                    const sortedUOMs = Array.from(allUOMsInGroup).sort();
+                    const staticColSpan = columns.findIndex(col => col.key === `meal_time_${comboGroup.group_specific_meal_times[0]}`);
 
                     return (
                     <Card key={itemKey} className="overflow-hidden shadow-md rounded-lg">
@@ -1419,7 +1431,7 @@ export default function DietInsightsPage() {
                                 <thead className="bg-muted/50">
                                     <tr>
                                         {columns.map(col => (
-                                            <th key={String(col.key)} className="p-2 text-left font-semibold text-muted-foreground">{col.header}</th>
+                                            <th key={String(col.key)} className="p-2 text-left font-semibold text-muted-foreground whitespace-nowrap">{col.header}</th>
                                         ))}
                                     </tr>
                                 </thead>
@@ -1427,30 +1439,28 @@ export default function DietInsightsPage() {
                                     {comboGroup.ingredients.map((ingredient, ingIndex) => (
                                         <tr key={ingIndex} className="border-b last:border-b-0 hover:bg-muted/20">
                                             {columns.map(col => (
-                                                <td key={`${String(col.key)}-${ingIndex}`} className="p-2 align-top">
-                                                    {col.cell ? col.cell(ingredient) : String((ingredient as any)[col.key] ?? '')}
+                                                <td key={`${String(col.key)}-${ingIndex}`} className="p-2 align-top whitespace-nowrap">
+                                                    {col.cell ? (col.cell(ingredient) === '0.0000' ? '' : col.cell(ingredient) ) : String((ingredient as any)[col.key] ?? '')}
                                                 </td>
                                             ))}
                                         </tr>
                                     ))}
                                 </tbody>
                                 <tfoot className="bg-muted/50 font-semibold">
-                                    <tr>
-                                        <td className="p-2 text-right font-medium text-muted-foreground" colSpan={staticColSpan < 0 ? columns.length : staticColSpan}>Total Qty Required:</td>
-                                        {comboGroup.group_specific_meal_times.map(mealTime => (
-                                            <td key={`total-${mealTime}`} className="p-2 text-left">
-                                                {totalsByMealTime[mealTime]?.toFixed(4) === '0.0000' ? '' : totalsByMealTime[mealTime]?.toFixed(4) || ''}
-                                            </td>
-                                        ))}
-                                        {/* Fill remaining static columns if any after meal times - should not happen with current column order */}
-                                        {staticColSpan >= 0 && columns.length - comboGroup.group_specific_meal_times.length - staticColSpan > 0 && (
-                                          <td colSpan={columns.length - comboGroup.group_specific_meal_times.length - staticColSpan}></td>
-                                        )}
-                                    </tr>
+                                    {sortedUOMs.map(uom => (
+                                        <tr key={`total-${uom}`}>
+                                            <td className="p-2 text-right font-medium text-muted-foreground whitespace-nowrap" colSpan={staticColSpan < 0 ? columns.length : staticColSpan}>Total Qty Required ({uom}):</td>
+                                            {comboGroup.group_specific_meal_times.map(mealTime => (
+                                                <td key={`total-${mealTime}-${uom}`} className="p-2 text-left whitespace-nowrap">
+                                                    {totalsByMealTimeAndUOM[mealTime]?.[uom]?.toFixed(4) === '0.0000' ? '' : totalsByMealTimeAndUOM[mealTime]?.[uom]?.toFixed(4) || ''}
+                                                </td>
+                                            ))}
+                                        </tr>
+                                    ))}
                                      <tr>
-                                        <td className="p-2 font-medium text-muted-foreground" colSpan={staticColSpan < 0 ? columns.length : staticColSpan}># of Animals</td>
+                                        <td className="p-2 font-medium text-muted-foreground whitespace-nowrap" colSpan={staticColSpan < 0 ? columns.length : staticColSpan}># of Animals</td>
                                         {comboGroup.group_specific_meal_times.map(mealTime => (
-                                            <td key={`animals-${mealTime}`} className="p-2 text-left">
+                                            <td key={`animals-${mealTime}`} className="p-2 text-left whitespace-nowrap">
                                                 <Button
                                                     variant="link"
                                                     className="p-0 h-auto text-sm text-primary font-bold"
@@ -1466,9 +1476,9 @@ export default function DietInsightsPage() {
                                         ))}
                                     </tr>
                                     <tr>
-                                        <td className="p-2 font-medium text-muted-foreground" colSpan={staticColSpan < 0 ? columns.length : staticColSpan}># of Species</td>
+                                        <td className="p-2 font-medium text-muted-foreground whitespace-nowrap" colSpan={staticColSpan < 0 ? columns.length : staticColSpan}># of Species</td>
                                          {comboGroup.group_specific_meal_times.map(mealTime => (
-                                            <td key={`species-${mealTime}`} className="p-2 text-left">
+                                            <td key={`species-${mealTime}`} className="p-2 text-left whitespace-nowrap">
                                                 <Button
                                                     variant="link"
                                                     className="p-0 h-auto text-sm text-primary font-bold"
@@ -1484,9 +1494,9 @@ export default function DietInsightsPage() {
                                         ))}
                                     </tr>
                                     <tr>
-                                        <td className="p-2 font-medium text-muted-foreground" colSpan={staticColSpan < 0 ? columns.length : staticColSpan}># of Enclosures</td>
+                                        <td className="p-2 font-medium text-muted-foreground whitespace-nowrap" colSpan={staticColSpan < 0 ? columns.length : staticColSpan}># of Enclosures</td>
                                         {comboGroup.group_specific_meal_times.map(mealTime => (
-                                            <td key={`enclosures-${mealTime}`} className="p-2 text-left">
+                                            <td key={`enclosures-${mealTime}`} className="p-2 text-left whitespace-nowrap">
                                                  <Button
                                                     variant="link"
                                                     className="p-0 h-auto text-sm text-primary font-bold"
@@ -1795,5 +1805,3 @@ export default function DietInsightsPage() {
     </div>
   );
 }
-
-    
