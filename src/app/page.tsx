@@ -17,7 +17,7 @@ import { DataTable } from '@/components/DataTable';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import type {
-  DietEntry, SiteIngredientsData, ColumnDefinition, DetailedRawMaterialData,
+  DietEntry, SiteIngredientsData, ColumnDefinition, DetailedRawMaterialData, GroupedByTypeIngredient,
   ProcessedIngredientTotalsResult, ProcessedDetailedRawMaterialResult,
   ProcessedRecipeDataResult, RecipeIngredientItem, GroupedRecipe,
   ProcessedComboIngredientsResult, GroupedComboIngredient, ComboIngredientItem,
@@ -30,9 +30,9 @@ import {
   getUniqueClassNames,
   getUniqueMealTimes,
   processChoiceIngredientUsage,
-  applyGlobalFilters, getGlobalCounts
+  applyGlobalFilters, getGlobalCounts, getDynamicUniqueFilterOptions
 } from '@/lib/excelParser';
-import { Leaf, Utensils, Filter, Loader2, ChevronsUpDown, Download, Info } from 'lucide-react';
+import { Leaf, Utensils, Filter, Loader2, ChevronsUpDown, Download, Info, Table as TableIcon } from 'lucide-react';
 // import { Sparkles } from 'lucide-react'; // For AI Summary
 import { format } from 'date-fns';
 import jsPDF from 'jspdf';
@@ -52,7 +52,7 @@ const getDayOptions = (autoDetectedInputDuration: number) => {
 
     if (autoDetectedInputDuration === 7) {
         // "1 Day" will be hidden if input is 7 days
-        return options;
+        return options.filter(opt => opt.value !== 1);
     } else {
          if (!options.some(opt => opt.value === 1)) {
           options.unshift(oneDayOption);
@@ -154,34 +154,7 @@ export default function DietInsightsPage() {
   };
 
 
- const overallIngredientsColumns = useMemo((): ColumnDefinition<SiteIngredientsData>[] => {
-    const columns: ColumnDefinition<SiteIngredientsData>[] = [
-      { key: 'ingredient_name', header: 'Ingredient Name' },
-    ];
-
-    if (autoDetectedInputDuration === 7) {
-      columns.push({
-        key: 'qty_per_day',
-        header: 'Qty / Day',
-        cell: (item) => item.qty_per_day.toFixed(2)
-      });
-      columns.push({
-        key: 'qty_for_target_duration',
-        header: `Qty for ${targetDisplayDuration} Days`,
-        cell: (item) => item.qty_for_target_duration.toFixed(2)
-      });
-    } else {
-      columns.push({
-        key: 'qty_for_target_duration',
-        header: `Qty for ${targetDisplayDuration} Day${targetDisplayDuration > 1 ? 's' : ''}`,
-        cell: (item) => item.qty_for_target_duration.toFixed(2)
-      });
-    }
-    columns.push({ key: 'base_uom_name', header: 'Base UOM' });
-    return columns;
-  }, [autoDetectedInputDuration, targetDisplayDuration]);
-
-  const detailedRawMaterialColumns = useMemo((): ColumnDefinition<DetailedRawMaterialData>[] => {
+ const detailedRawMaterialColumns = useMemo((): ColumnDefinition<DetailedRawMaterialData>[] => {
     return [
       { key: 'ingredient_name', header: 'Ingredient Name' },
       { key: 'qty_per_day', header: 'Qty / Day', cell: (item) => item.qty_per_day.toFixed(2) },
@@ -215,10 +188,11 @@ export default function DietInsightsPage() {
     setAutoDetectedInputDuration(1);
     setExpandedSpeciesText({});
 
-    const currentDayOptions = getDayOptions(1);
+    // Reset target display duration based on default 1-day input detection
+    const currentDayOptions = getDayOptions(1); 
     const defaultTargetDuration = currentDayOptions.find(opt => opt.value === 1)?.value || currentDayOptions[0]?.value || 1;
     setTargetDisplayDuration(defaultTargetDuration);
-
+    
     setExcelMinDate(null);
     setExcelMaxDate(null);
     // setAiSummary(null);
@@ -235,16 +209,17 @@ export default function DietInsightsPage() {
     try {
       const { data: parsedData, detectedInputDuration, minDate, maxDate } = await parseExcelFile(file);
       setProgress(60);
-      setDietData(parsedData);
+      setDietData(parsedData); // Store the original full dataset
       setAutoDetectedInputDuration(detectedInputDuration);
       setExcelMinDate(minDate);
       setExcelMaxDate(maxDate);
 
+      // Set ALL possible filter options initially from the full dataset
       setAllSiteNames(getUniqueSiteNames(parsedData));
       setAllSpeciesNames(getUniqueSpeciesNames(parsedData));
       setAllClassNames(getUniqueClassNames(parsedData));
       setAllMealTimes(getUniqueMealTimes(parsedData));
-
+      
       // Initialize unique filter options with all possible values from the uploaded file
       setUniqueSiteNames(getUniqueSiteNames(parsedData));
       setUniqueSpeciesNames(getUniqueSpeciesNames(parsedData));
@@ -252,20 +227,16 @@ export default function DietInsightsPage() {
       setUniqueMealTimes(getUniqueMealTimes(parsedData));
 
 
-      let newTargetDuration = targetDisplayDuration;
-      if (detectedInputDuration === 7) {
-        const sevenDayOptions = getDayOptions(7);
-        if (!sevenDayOptions.some(opt => opt.value === targetDisplayDuration) || targetDisplayDuration === 1) {
-          newTargetDuration = sevenDayOptions.find(opt => opt.value === 7)?.value || sevenDayOptions[0]?.value || 7;
-        }
-      } else { // 1-day input
-        const oneDayOptions = getDayOptions(1);
-         if (!oneDayOptions.some(opt => opt.value === targetDisplayDuration) || targetDisplayDuration > 1) {
-           newTargetDuration = oneDayOptions.find(opt => opt.value === 1)?.value || oneDayOptions[0]?.value || 1;
-        }
+      // Adjust targetDisplayDuration based on detectedInputDuration
+      const currentDayOptions = getDayOptions(detectedInputDuration);
+      let newTargetDuration = targetDisplayDuration; // Keep current if valid
+
+      if (!currentDayOptions.some(opt => opt.value === newTargetDuration)) {
+         // If current target duration is not valid for the new input type (e.g., was 1, now 7-day input hides 1 day option)
+         // or if the new input type makes the old target invalid (e.g. input is 1-day, target was 7)
+        newTargetDuration = currentDayOptions[0]?.value || (detectedInputDuration === 7 ? 7 : 1);
       }
       setTargetDisplayDuration(newTargetDuration);
-
 
       setError(null);
       parsedDataSuccessfully = true;
@@ -279,11 +250,11 @@ export default function DietInsightsPage() {
         setIsLoading(false);
         setProgress(0);
         if (parsedDataSuccessfully) {
-             setActiveTab("raw-materials");
+             setActiveTab("raw-materials"); 
         }
       }, 500);
     }
-  }, [targetDisplayDuration]);
+  }, [targetDisplayDuration]); // Keep targetDisplayDuration dependency if you want it to influence default on new upload
 
  useEffect(() => {
     if (!dietData) {
@@ -296,14 +267,12 @@ export default function DietInsightsPage() {
     }
 
     const processAllData = async () => {
-      // Set all processing flags to true initially
       setIsProcessingOverall(true);
       setIsProcessingDetailedRaw(true);
       setIsProcessingRecipes(true);
       setIsProcessingCombo(true);
       setIsProcessingChoice(true);
 
-      // Apply global filters once
       const globallyFilteredData = applyGlobalFilters(
         dietData, selectedSiteNames, selectedClassNames, selectedSpeciesNames, selectedMealTimes
       );
@@ -311,13 +280,14 @@ export default function DietInsightsPage() {
 
       try {
         const overallResult = processOverallIngredientTotals(
+          dietData, // Pass original for consumer details
           globallyFilteredData, globalCounts.totalAnimals, globalCounts.totalSpecies,
           autoDetectedInputDuration, targetDisplayDuration
         );
         setOverallIngredientsData(overallResult);
       } catch (processingError) {
-        const errorMessage = processingError instanceof Error ? processingError.message : 'An unknown error occurred during overall ingredient analysis.';
-        setError(prev => prev ? `${prev}\nOverall: ${errorMessage}` : `Overall: ${errorMessage}`);
+        console.error("Error processing overall ingredients:", processingError);
+        setError(prev => prev ? `${prev}\nOverall: ${processingError instanceof Error ? processingError.message : String(processingError)}` : `Overall: ${processingError instanceof Error ? processingError.message : String(processingError)}`);
         setOverallIngredientsData(null);
       } finally {
         setIsProcessingOverall(false);
@@ -330,8 +300,8 @@ export default function DietInsightsPage() {
         );
         setDetailedRawMaterialsData(detailedRawResult);
       } catch (processingError) {
-        const errorMessage = processingError instanceof Error ? processingError.message : 'An unknown error occurred during detailed raw material analysis.';
-        setError(prev => prev ? `${prev}\nDetailed Raw: ${errorMessage}` : `Detailed Raw: ${errorMessage}`);
+        console.error("Error processing detailed raw materials:", processingError);
+        setError(prev => prev ? `${prev}\nDetailed Raw: ${processingError instanceof Error ? processingError.message : String(processingError)}` : `Detailed Raw: ${processingError instanceof Error ? processingError.message : String(processingError)}`);
         setDetailedRawMaterialsData(null);
       } finally {
         setIsProcessingDetailedRaw(false);
@@ -339,15 +309,15 @@ export default function DietInsightsPage() {
 
       try {
         const recipeResult = processRecipeData(
-          dietData, // Pass original data for accurate consumer mapping
+          dietData, 
           globallyFilteredData,
           globalCounts.totalAnimals, globalCounts.totalSpecies,
           autoDetectedInputDuration, targetDisplayDuration
         );
         setRecipesData(recipeResult);
       } catch (processingError) {
-        const errorMessage = processingError instanceof Error ? processingError.message : 'An unknown error occurred during recipe analysis.';
-        setError(prev => prev ? `${prev}\nRecipes: ${errorMessage}` : `Recipes: ${errorMessage}`);
+        console.error("Error processing recipes:", processingError);
+        setError(prev => prev ? `${prev}\nRecipes: ${processingError instanceof Error ? processingError.message : String(processingError)}` : `Recipes: ${processingError instanceof Error ? processingError.message : String(processingError)}`);
         setRecipesData(null);
       } finally {
         setIsProcessingRecipes(false);
@@ -355,15 +325,15 @@ export default function DietInsightsPage() {
 
       try {
         const comboResult = processComboIngredientUsage(
-          dietData, // Pass original data
+          dietData, 
           globallyFilteredData,
           globalCounts.totalAnimals, globalCounts.totalSpecies,
           autoDetectedInputDuration, targetDisplayDuration
         );
         setComboIngredientsData(comboResult);
       } catch (processingError) {
-        const errorMessage = processingError instanceof Error ? processingError.message : 'An unknown error occurred during combo ingredient analysis.';
-        setError(prev => prev ? `${prev}\nCombo: ${errorMessage}` : `Combo: ${errorMessage}`);
+        console.error("Error processing combo ingredients:", processingError);
+        setError(prev => prev ? `${prev}\nCombo: ${processingError instanceof Error ? processingError.message : String(processingError)}` : `Combo: ${processingError instanceof Error ? processingError.message : String(processingError)}`);
         setComboIngredientsData(null);
       } finally {
         setIsProcessingCombo(false);
@@ -371,15 +341,15 @@ export default function DietInsightsPage() {
 
       try {
         const choiceResult = processChoiceIngredientUsage(
-          dietData, // Pass original data
+          dietData, 
           globallyFilteredData,
           globalCounts.totalAnimals, globalCounts.totalSpecies,
           autoDetectedInputDuration, targetDisplayDuration
         );
         setChoiceIngredientsData(choiceResult);
       } catch (processingError) {
-        const errorMessage = processingError instanceof Error ? processingError.message : 'An unknown error occurred during choice ingredient analysis.';
-        setError(prev => prev ? `${prev}\nChoice: ${errorMessage}` : `Choice: ${errorMessage}`);
+        console.error("Error processing choice ingredients:", processingError);
+        setError(prev => prev ? `${prev}\nChoice: ${processingError instanceof Error ? processingError.message : String(processingError)}` : `Choice: ${processingError instanceof Error ? processingError.message : String(processingError)}`);
         setChoiceIngredientsData(null);
       } finally {
         setIsProcessingChoice(false);
@@ -389,56 +359,32 @@ export default function DietInsightsPage() {
     processAllData();
   }, [dietData, selectedSiteNames, selectedSpeciesNames, selectedClassNames, selectedMealTimes, autoDetectedInputDuration, targetDisplayDuration]);
 
+
   useEffect(() => {
     if (!dietData) {
-      // If no main data, reset unique filters to all possible values initially captured
       setUniqueSiteNames(allSiteNames);
       setUniqueClassNames(allClassNames);
       setUniqueSpeciesNames(allSpeciesNames);
       setUniqueMealTimes(allMealTimes);
       return;
     }
-
-    // Function to get unique values for a specific filter dropdown,
-    // considering the selections in OTHER active filters.
-    const getDynamicUniqueValues = (
-        dataToFilter: DietEntry[], // This should be the original full dietData
-        targetKey: keyof DietEntry, // The key for which to get unique values (e.g., 'site_name')
-        // Current selections for OTHER filters
-        filterSite: string[],
-        filterClass: string[],
-        filterSpecies: string[],
-        filterMeal: string[]
-    ): string[] => {
-      let filtered = dataToFilter;
-
-      // Apply other active filters IF the targetKey is NOT the filter being applied
-      if (targetKey !== 'site_name' && filterSite.length > 0) {
-        filtered = filtered.filter(e => e.site_name && filterSite.includes(e.site_name));
-      }
-      if (targetKey !== 'class_name' && filterClass.length > 0) {
-        filtered = filtered.filter(e => e.class_name && filterClass.includes(e.class_name));
-      }
-      if (targetKey !== 'common_name' && filterSpecies.length > 0) {
-        filtered = filtered.filter(e => e.common_name && filterSpecies.includes(e.common_name));
-      }
-      if (targetKey !== 'meal_time' && filterMeal.length > 0) {
-        filtered = filtered.filter(e => e.meal_time && filterMeal.includes(e.meal_time));
-      }
-      return Array.from(new Set(filtered.map(entry => entry[targetKey]).filter(Boolean) as string[])).sort();
+    const currentFilters = {
+        siteNames: selectedSiteNames,
+        classNames: selectedClassNames,
+        speciesNames: selectedSpeciesNames,
+        mealTimes: selectedMealTimes,
     };
 
-    // Update unique options for each filter based on selections in other filters
-    setUniqueSiteNames(getDynamicUniqueValues(dietData, 'site_name', [], selectedClassNames, selectedSpeciesNames, selectedMealTimes));
-    setUniqueClassNames(getDynamicUniqueValues(dietData, 'class_name', selectedSiteNames, [], selectedSpeciesNames, selectedMealTimes));
-    setUniqueSpeciesNames(getDynamicUniqueValues(dietData, 'common_name', selectedSiteNames, selectedClassNames, [], selectedMealTimes));
-    setUniqueMealTimes(getDynamicUniqueValues(dietData, 'meal_time', selectedSiteNames, selectedClassNames, selectedSpeciesNames, []));
+    setUniqueSiteNames(getDynamicUniqueFilterOptions(dietData, 'site_name', currentFilters));
+    setUniqueClassNames(getDynamicUniqueFilterOptions(dietData, 'class_name', currentFilters));
+    setUniqueSpeciesNames(getDynamicUniqueFilterOptions(dietData, 'common_name', currentFilters));
+    setUniqueMealTimes(getDynamicUniqueFilterOptions(dietData, 'meal_time', currentFilters));
 
   }, [dietData, selectedSiteNames, selectedClassNames, selectedSpeciesNames, selectedMealTimes, allSiteNames, allClassNames, allSpeciesNames, allMealTimes]);
 
 
-  const formattedDateRangeTitle = useMemo(() => {
-    const baseTitle = "Raw Material List";
+  const formattedIngredientTotalsTitle = useMemo(() => {
+    const baseTitle = "Ingredient Totals";
     const suffix = "(Excluding Ingredients with Choice)";
 
     if (!excelMinDate) {
@@ -512,6 +458,10 @@ export default function DietInsightsPage() {
   }, [excelMinDate, excelMaxDate]);
 
 
+  const displayableIngredientTotals = useMemo(() =>
+    (overallIngredientsData?.data?.filter(group => group.ingredients.length > 0)) || [],
+  [overallIngredientsData]);
+
   const displayableRecipes = useMemo(() =>
     (recipesData?.data?.filter(recipe => recipe.ingredients.length > 0)) || [],
   [recipesData]);
@@ -523,6 +473,255 @@ export default function DietInsightsPage() {
   const displayableChoices = useMemo(() =>
     (choiceIngredientsData?.data?.filter(group => group.ingredients.length > 0)) || [],
   [choiceIngredientsData]);
+
+
+  const handleAllTypeIngredientsPdfDownload = () => {
+    if (!displayableIngredientTotals || displayableIngredientTotals.length === 0) {
+      alert("No ingredient types with items to download based on current filters.");
+      return;
+    }
+    const doc = new jsPDF();
+    let currentY = 15;
+    doc.setFontSize(16);
+    doc.text(formattedIngredientTotalsTitle, 14, currentY);
+    currentY += 8;
+
+    displayableIngredientTotals.forEach((typeGroup, index) => {
+      if (index > 0 && (currentY + 70 > doc.internal.pageSize.getHeight() - 20)) { // Check for page break
+        doc.addPage(); currentY = 15; doc.setFontSize(16);
+        doc.text(formattedIngredientTotalsTitle + " (cont.)", 14, currentY); currentY += 8;
+      } else if (index > 0) {
+        currentY += 10; // Space between groups
+      }
+
+      doc.setFontSize(12);
+      let groupTitle = typeGroup.ingredient_type_name;
+       if (selectedMealTimes.length === 1) {
+         groupTitle += ` - ${selectedMealTimes[0]}`;
+       }
+      doc.text(groupTitle, 14, currentY); currentY += 6;
+      doc.setFontSize(8);
+
+      let totalQtyText = "Total for " + targetDisplayDuration + " Day(s): ";
+      const uomTotalsCombined = Object.entries(typeGroup.total_quantities_for_target_duration)
+                                   .map(([uom, qty]) => `${qty.toFixed(2)} ${uom}`)
+                                   .join(', ');
+      doc.text(totalQtyText + (uomTotalsCombined || "N/A"), 14, currentY); currentY +=4;
+
+      const speciesText = `Consuming Species: ${typeGroup.overall_consuming_species_details.length} ${formatSpeciesDetails(typeGroup.overall_consuming_species_details)}`;
+      const splitSpeciesText = doc.splitTextToSize(speciesText, doc.internal.pageSize.getWidth() - 28);
+      doc.text(splitSpeciesText, 14, currentY); currentY += (splitSpeciesText.length * 3.5) + 2;
+
+      doc.text(`Consuming Animals: ${typeGroup.overall_consuming_animals_count}`, 14, currentY); currentY += 4;
+      doc.text(`Consuming Enclosures: ${typeGroup.overall_consuming_enclosures_count}`, 14, currentY); currentY += 4;
+      
+      const scheduledTimesString = typeGroup.scheduled_meal_times.length > 0 ? typeGroup.scheduled_meal_times.map(t => t.trim()).filter(Boolean).join(', ') : 'N/A';
+      const mealTimesText = `Scheduled Meal Times: ${scheduledTimesString}`;
+      const splitMealTimesText = doc.splitTextToSize(mealTimesText, doc.internal.pageSize.getWidth() - 28);
+      doc.text(splitMealTimesText, 14, currentY); currentY += (splitMealTimesText.length * 3.5) + 2;
+
+
+      // Ingredient Table
+      const ingredientTableColumns = [
+        { header: "Ingredient Name", dataKey: "ingredient_name" },
+        { header: "Prep Type", dataKey: "preparation_type_name" },
+        { header: "Cut Size", dataKey: "cut_size_name" },
+        { header: "Base UOM", dataKey: "base_uom_name" },
+      ];
+      typeGroup.group_specific_meal_times.forEach(mt => {
+        ingredientTableColumns.push({ header: `${mt} Qty`, dataKey: `qty_${mt}` });
+      });
+
+      const ingredientTableRows = typeGroup.ingredients.map(ing => {
+        const row: any = {
+          ingredient_name: ing.ingredient_name,
+          preparation_type_name: ing.preparation_type_name || 'N/A',
+          cut_size_name: ing.cut_size_name || 'N/A',
+          base_uom_name: ing.base_uom_name,
+        };
+        typeGroup.group_specific_meal_times.forEach(mt => {
+          row[`qty_${mt}`] = ing.quantities_by_meal_time[mt]?.toFixed(2) === '0.00' ? '' : ing.quantities_by_meal_time[mt]?.toFixed(2) || '';
+        });
+        return row;
+      });
+
+      (doc as any).autoTable({
+        columns: ingredientTableColumns,
+        body: ingredientTableRows,
+        startY: currentY,
+        theme: 'striped',
+        headStyles: { fillColor: [75, 85, 99] },
+        styles: { fontSize: 7, cellPadding: 1 },
+      });
+      currentY = (doc as any).lastAutoTable.finalY + 3;
+
+      // Summary Table
+      const summaryTableBody: any[] = [];
+      const uomTotalsForFooter: Record<string, Record<string, number>> = {};
+      typeGroup.group_specific_meal_times.forEach(mt => {
+        uomTotalsForFooter[mt] = {};
+        typeGroup.ingredients.forEach(ing => {
+          const qty = ing.quantities_by_meal_time[mt] || 0;
+          uomTotalsForFooter[mt][ing.base_uom_name] = (uomTotalsForFooter[mt][ing.base_uom_name] || 0) + qty;
+        });
+      });
+      
+      const allUOMs = Array.from(new Set(typeGroup.ingredients.map(i => i.base_uom_name))).sort();
+      allUOMs.forEach(uom => {
+          const uomRow: any = { metric: `Total Qty Required (${uom}):` };
+          typeGroup.group_specific_meal_times.forEach(mt => {
+              uomRow[mt] = uomTotalsForFooter[mt]?.[uom]?.toFixed(2) === '0.00' ? '' : uomTotalsForFooter[mt]?.[uom]?.toFixed(2) || '';
+          });
+          summaryTableBody.push(uomRow);
+      });
+      
+      const animalRow: any = { metric: "# of Animals" };
+      typeGroup.group_specific_meal_times.forEach(mt => { animalRow[mt] = (typeGroup.animals_per_meal_time[mt] || []).length.toString(); });
+      summaryTableBody.push(animalRow);
+
+      const speciesRow: any = { metric: "# of Species" };
+      typeGroup.group_specific_meal_times.forEach(mt => { speciesRow[mt] = (typeGroup.species_details_per_meal_time[mt] || []).length.toString(); });
+      summaryTableBody.push(speciesRow);
+
+      const enclosureRow: any = { metric: "# of Enclosures" };
+      typeGroup.group_specific_meal_times.forEach(mt => { enclosureRow[mt] = (typeGroup.enclosures_per_meal_time[mt] || []).length.toString(); });
+      summaryTableBody.push(enclosureRow);
+      
+      const summaryTableColumns = [{ header: "Time Slot", dataKey: "metric" }];
+      typeGroup.group_specific_meal_times.forEach(mt => {
+          summaryTableColumns.push({header: mt, dataKey: mt});
+      });
+
+      (doc as any).autoTable({
+        columns: summaryTableColumns,
+        body: summaryTableBody,
+        startY: currentY,
+        theme: 'grid',
+        headStyles: { fillColor: [100, 116, 139], textColor: 255 },
+        styles: { fontSize: 7, cellPadding: 1 },
+        columnStyles: { metric: { fontStyle: 'bold'}},
+      });
+      currentY = (doc as any).lastAutoTable.finalY + 5;
+    });
+    doc.save('all_ingredient_totals_report.pdf');
+  };
+
+  const handleSingleTypeIngredientPdfDownload = (typeGroup: GroupedByTypeIngredient) => {
+     if (!typeGroup || typeGroup.ingredients.length === 0) {
+      alert("No ingredient data for this type to download.");
+      return;
+    }
+    const doc = new jsPDF();
+    let currentY = 15;
+    doc.setFontSize(16);
+    let groupTitle = typeGroup.ingredient_type_name;
+     if (selectedMealTimes.length === 1) {
+       groupTitle += ` - ${selectedMealTimes[0]}`;
+     }
+    doc.text(groupTitle, 14, currentY); currentY += 8;
+    doc.setFontSize(8);
+
+    let totalQtyText = "Total for " + targetDisplayDuration + " Day(s): ";
+    const uomTotalsCombined = Object.entries(typeGroup.total_quantities_for_target_duration)
+                                 .map(([uom, qty]) => `${qty.toFixed(2)} ${uom}`)
+                                 .join(', ');
+    doc.text(totalQtyText + (uomTotalsCombined || "N/A"), 14, currentY); currentY +=4;
+    
+    const speciesText = `Consuming Species: ${typeGroup.overall_consuming_species_details.length} ${formatSpeciesDetails(typeGroup.overall_consuming_species_details)}`;
+    const splitSpeciesText = doc.splitTextToSize(speciesText, doc.internal.pageSize.getWidth() - 28);
+    doc.text(splitSpeciesText, 14, currentY); currentY += (splitSpeciesText.length * 3.5) + 2;
+
+    doc.text(`Consuming Animals: ${typeGroup.overall_consuming_animals_count}`, 14, currentY); currentY += 4;
+    doc.text(`Consuming Enclosures: ${typeGroup.overall_consuming_enclosures_count}`, 14, currentY); currentY += 4;
+    
+    const scheduledTimesString = typeGroup.scheduled_meal_times.length > 0 ? typeGroup.scheduled_meal_times.map(t => t.trim()).filter(Boolean).join(', ') : 'N/A';
+    const mealTimesText = `Scheduled Meal Times: ${scheduledTimesString}`;
+    const splitMealTimesText = doc.splitTextToSize(mealTimesText, doc.internal.pageSize.getWidth() - 28);
+    doc.text(splitMealTimesText, 14, currentY); currentY += (splitMealTimesText.length * 3.5) + 2;
+
+    // Ingredient Table
+    const ingredientTableColumns = [
+      { header: "Ingredient Name", dataKey: "ingredient_name" },
+      { header: "Prep Type", dataKey: "preparation_type_name" },
+      { header: "Cut Size", dataKey: "cut_size_name" },
+      { header: "Base UOM", dataKey: "base_uom_name" },
+    ];
+    typeGroup.group_specific_meal_times.forEach(mt => {
+      ingredientTableColumns.push({ header: `${mt} Qty`, dataKey: `qty_${mt}` });
+    });
+
+    const ingredientTableRows = typeGroup.ingredients.map(ing => {
+      const row: any = {
+        ingredient_name: ing.ingredient_name,
+        preparation_type_name: ing.preparation_type_name || 'N/A',
+        cut_size_name: ing.cut_size_name || 'N/A',
+        base_uom_name: ing.base_uom_name,
+      };
+      typeGroup.group_specific_meal_times.forEach(mt => {
+        row[`qty_${mt}`] = ing.quantities_by_meal_time[mt]?.toFixed(2) === '0.00' ? '' : ing.quantities_by_meal_time[mt]?.toFixed(2) || '';
+      });
+      return row;
+    });
+
+    (doc as any).autoTable({
+      columns: ingredientTableColumns,
+      body: ingredientTableRows,
+      startY: currentY,
+      theme: 'striped',
+      headStyles: { fillColor: [75, 85, 99] },
+      styles: { fontSize: 7, cellPadding: 1 },
+    });
+    currentY = (doc as any).lastAutoTable.finalY + 3;
+
+    // Summary Table
+    const summaryTableBody: any[] = [];
+    const uomTotalsForFooter: Record<string, Record<string, number>> = {};
+      typeGroup.group_specific_meal_times.forEach(mt => {
+        uomTotalsForFooter[mt] = {};
+        typeGroup.ingredients.forEach(ing => {
+          const qty = ing.quantities_by_meal_time[mt] || 0;
+          uomTotalsForFooter[mt][ing.base_uom_name] = (uomTotalsForFooter[mt][ing.base_uom_name] || 0) + qty;
+        });
+      });
+      
+    const allUOMs = Array.from(new Set(typeGroup.ingredients.map(i => i.base_uom_name))).sort();
+    allUOMs.forEach(uom => {
+        const uomRow: any = { metric: `Total Qty Required (${uom}):` };
+        typeGroup.group_specific_meal_times.forEach(mt => {
+            uomRow[mt] = uomTotalsForFooter[mt]?.[uom]?.toFixed(2) === '0.00' ? '' : uomTotalsForFooter[mt]?.[uom]?.toFixed(2) || '';
+        });
+        summaryTableBody.push(uomRow);
+    });
+      
+    const animalRow: any = { metric: "# of Animals" };
+    typeGroup.group_specific_meal_times.forEach(mt => { animalRow[mt] = (typeGroup.animals_per_meal_time[mt] || []).length.toString(); });
+    summaryTableBody.push(animalRow);
+
+    const speciesRow: any = { metric: "# of Species" };
+    typeGroup.group_specific_meal_times.forEach(mt => { speciesRow[mt] = (typeGroup.species_details_per_meal_time[mt] || []).length.toString(); });
+    summaryTableBody.push(speciesRow);
+
+    const enclosureRow: any = { metric: "# of Enclosures" };
+    typeGroup.group_specific_meal_times.forEach(mt => { enclosureRow[mt] = (typeGroup.enclosures_per_meal_time[mt] || []).length.toString(); });
+    summaryTableBody.push(enclosureRow);
+      
+    const summaryTableColumns = [{ header: "Time Slot", dataKey: "metric" }];
+    typeGroup.group_specific_meal_times.forEach(mt => {
+        summaryTableColumns.push({header: mt, dataKey: mt});
+    });
+
+    (doc as any).autoTable({
+      columns: summaryTableColumns,
+      body: summaryTableBody,
+      startY: currentY,
+      theme: 'grid',
+      headStyles: { fillColor: [100, 116, 139], textColor: 255 },
+      styles: { fontSize: 7, cellPadding: 1 },
+      columnStyles: { metric: { fontStyle: 'bold'}},
+    });
+    
+    doc.save(`IngredientType_${typeGroup.ingredient_type_name.replace(/\s+/g, '_')}_${targetDisplayDuration}Days.pdf`);
+  };
 
 
   const handleAllRecipesPdfDownload = () => {
@@ -538,25 +737,19 @@ export default function DietInsightsPage() {
     currentY += 7; // Space after main title
 
     displayableRecipes.forEach((recipe, index) => {
-      if (index > 0) { // Add space before new recipe unless it's the first one
+      if (index > 0) { 
         currentY += 10;
       }
 
-      const speciesDetailsString = formatSpeciesDetails(recipe.overall_consuming_species_details);
-      const scheduledTimesString = recipe.scheduled_meal_times.length > 0 ? recipe.scheduled_meal_times.map(t => t.trim()).filter(Boolean).join(', ') : 'N/A';
+      let estimatedRecipeHeight = 60 + (formatSpeciesDetails(recipe.overall_consuming_species_details).length / 50 * 4);
+      recipe.group_specific_meal_times.forEach(() => estimatedRecipeHeight += 10); 
+      let totalIngredientRows = recipe.ingredients.length;
+      estimatedRecipeHeight += totalIngredientRows * 7; 
+      estimatedRecipeHeight += 25; // for summary rows
 
-      let estimatedRecipeHeight = 50 + (speciesDetailsString.length / 50 * 4) + (scheduledTimesString.length / 50 * 4);
-      recipe.group_specific_meal_times.forEach(() => estimatedRecipeHeight += 10); // for each meal time header
-      // Add height for ingredient rows, roughly
-      let totalIngredientRows = 0;
-      recipe.ingredients.forEach(() => totalIngredientRows++);
-      estimatedRecipeHeight += totalIngredientRows * 7;
-      estimatedRecipeHeight += recipe.group_specific_meal_times.length * 25; // For summary rows
-
-
-      if (currentY + estimatedRecipeHeight > doc.internal.pageSize.getHeight() - 20) { // Check if content will overflow
+      if (currentY + estimatedRecipeHeight > doc.internal.pageSize.getHeight() - 20 && index > 0) { 
         doc.addPage();
-        currentY = 15; // Reset Y for new page
+        currentY = 15; 
         doc.setFontSize(16);
         doc.text(formattedRecipesTitle + " (cont.)", 14, currentY);
         currentY += 7;
@@ -590,6 +783,7 @@ export default function DietInsightsPage() {
       doc.text(`Consuming Enclosures: ${recipe.overall_consuming_enclosures_count}`, 14, currentY);
       currentY += 4;
 
+      const scheduledTimesString = recipe.scheduled_meal_times.length > 0 ? recipe.scheduled_meal_times.map(t => t.trim()).filter(Boolean).join(', ') : 'N/A';
       const mealTimesText = `Scheduled Meal Times: ${scheduledTimesString}`;
       const splitMealTimesText = doc.splitTextToSize(mealTimesText, doc.internal.pageSize.getWidth() - 28);
       doc.text(splitMealTimesText, 14, currentY);
@@ -623,13 +817,12 @@ export default function DietInsightsPage() {
         body: ingredientTableRows,
         startY: currentY,
         theme: 'striped',
-        headStyles: { fillColor: [75, 85, 99] }, // Tailwind gray-600
+        headStyles: { fillColor: [75, 85, 99] }, 
         styles: { fontSize: 7, cellPadding: 1 },
       });
       currentY = (doc as any).lastAutoTable.finalY + 3;
       
-      // Summary Table (Animals, Species, Enclosures per meal time)
-      const summaryTableBody = [];
+      const summaryTableBody: any[] = [];
       const uomTotals: Record<string, Record<string, number>> = {};
       recipe.group_specific_meal_times.forEach(mt => {
         uomTotals[mt] = {};
@@ -676,7 +869,7 @@ export default function DietInsightsPage() {
         body: summaryTableBody,
         startY: currentY,
         theme: 'grid',
-        headStyles: { fillColor: [100, 116, 139], textColor: 255 }, // Tailwind slate-500
+        headStyles: { fillColor: [100, 116, 139], textColor: 255 }, 
         styles: { fontSize: 7, cellPadding: 1 },
         columnStyles: { metric: { fontStyle: 'bold'}},
       });
@@ -727,7 +920,6 @@ export default function DietInsightsPage() {
     doc.text(splitMealTimesText, 14, currentY);
     currentY += (splitMealTimesText.length * 3.5) + 2;
 
-    // Ingredient Table
     const ingredientTableColumns = [
         { header: "Ingredient Name", dataKey: "ingredient_name" },
         { header: "Prep Type", dataKey: "preparation_type_name" },
@@ -761,8 +953,7 @@ export default function DietInsightsPage() {
     });
     currentY = (doc as any).lastAutoTable.finalY + 3;
 
-    // Summary Table
-    const summaryTableBody = [];
+    const summaryTableBody: any[] = [];
     const uomTotals: Record<string, Record<string, number>> = {};
     recipe.group_specific_meal_times.forEach(mt => {
       uomTotals[mt] = {};
@@ -823,17 +1014,16 @@ export default function DietInsightsPage() {
     doc.text(formattedComboTitle, 14, currentY);
     currentY += 8;
 
-    displayableCombos.forEach((comboGroup) => {
-      if (currentY > 20 && (currentY + 60 > doc.internal.pageSize.getHeight() -20)) { // Add space and check for page break
+    displayableCombos.forEach((comboGroup, index) => {
+      if (index > 0 && (currentY + 70 > doc.internal.pageSize.getHeight() -20)) { 
         doc.addPage();
         currentY = 15;
         doc.setFontSize(16);
         doc.text(formattedComboTitle + " (cont.)", 14, currentY);
         currentY += 8;
-      } else if (currentY > 20) {
+      } else if (index > 0) {
          currentY += 10;
       }
-
 
       doc.setFontSize(12);
       let groupTitle = comboGroup.combo_group_name;
@@ -849,15 +1039,16 @@ export default function DietInsightsPage() {
       doc.text(splitOverallSpeciesText, 14, currentY);
       currentY += (splitOverallSpeciesText.length * 3.5) + 2;
 
-      doc.text(`Consuming Animals: ${comboGroup.overall_consuming_animals_count}`, 14, currentY);
-      currentY += 4;
-      doc.text(`Consuming Enclosures: ${comboGroup.overall_consuming_enclosures_count}`, 14, currentY);
-      currentY += 4;
+      doc.text(`Consuming Animals: ${comboGroup.overall_consuming_animals_count}`, 14, currentY); currentY += 4;
+      doc.text(`Consuming Enclosures: ${comboGroup.overall_consuming_enclosures_count}`, 14, currentY); currentY += 4;
+      
       const scheduledTimesString = comboGroup.group_specific_meal_times.length > 0 ? comboGroup.group_specific_meal_times.join(', ') : 'N/A'; // Using group_specific_meal_times for scheduled
-      doc.text(`Scheduled Meal Times: ${scheduledTimesString}`, 14, currentY);
-      currentY += 6;
+      const mealTimesText = `Scheduled Meal Times: ${scheduledTimesString}`;
+      const splitMealTimesText = doc.splitTextToSize(mealTimesText, doc.internal.pageSize.getWidth() - 28);
+      doc.text(splitMealTimesText, 14, currentY);
+      currentY += (splitMealTimesText.length * 3.5) + 2;
 
-      // Table columns for ingredients
+
       const ingredientTableColumns = [
         { header: "Ingredient Name", dataKey: "ingredient_name" },
         { header: "Prep Type", dataKey: "preparation_type_name" },
@@ -891,8 +1082,7 @@ export default function DietInsightsPage() {
       });
       currentY = (doc as any).lastAutoTable.finalY + 3;
 
-      // Summary Table (Animals, Species, Enclosures per meal time)
-      const summaryTableBody = [];
+      const summaryTableBody: any[] = [];
       const uomTotals: Record<string, Record<string, number>> = {};
       comboGroup.group_specific_meal_times.forEach(mt => {
         uomTotals[mt] = {};
@@ -939,7 +1129,7 @@ export default function DietInsightsPage() {
         body: summaryTableBody,
         startY: currentY,
         theme: 'grid',
-        headStyles: { fillColor: [100, 116, 139], textColor: 255 }, // Tailwind slate-500
+        headStyles: { fillColor: [100, 116, 139], textColor: 255 }, 
         styles: { fontSize: 7, cellPadding: 1 },
         columnStyles: { metric: { fontStyle: 'bold'}},
       });
@@ -972,10 +1162,14 @@ export default function DietInsightsPage() {
 
     doc.text(`Consuming Animals: ${group.overall_consuming_animals_count}`, 14, currentY); currentY += 4;
     doc.text(`Consuming Enclosures: ${group.overall_consuming_enclosures_count}`, 14, currentY); currentY += 4;
+    
     const scheduledTimesString = group.group_specific_meal_times.length > 0 ? group.group_specific_meal_times.join(', ') : 'N/A';
-    doc.text(`Scheduled Meal Times: ${scheduledTimesString}`, 14, currentY); currentY += 6;
+    const mealTimesText = `Scheduled Meal Times: ${scheduledTimesString}`;
+    const splitMealTimesText = doc.splitTextToSize(mealTimesText, doc.internal.pageSize.getWidth() - 28);
+    doc.text(splitMealTimesText, 14, currentY);
+    currentY += (splitMealTimesText.length * 3.5) + 2;
 
-    // Ingredient Table
+
     const ingredientTableColumns = [
         { header: "Ingredient Name", dataKey: "ingredient_name" },
         { header: "Prep Type", dataKey: "preparation_type_name" },
@@ -1009,8 +1203,7 @@ export default function DietInsightsPage() {
     });
     currentY = (doc as any).lastAutoTable.finalY + 3;
 
-    // Summary Table
-    const summaryTableBody = [];
+    const summaryTableBody: any[] = [];
     const uomTotals: Record<string, Record<string, number>> = {};
     group.group_specific_meal_times.forEach(mt => {
       uomTotals[mt] = {};
@@ -1072,7 +1265,7 @@ export default function DietInsightsPage() {
     currentY += 8;
 
     displayableChoices.forEach((group, index) => {
-      if (index > 0 && (currentY + 60 > doc.internal.pageSize.getHeight() - 20)) {
+      if (index > 0 && (currentY + 70 > doc.internal.pageSize.getHeight() - 20)) {
         doc.addPage(); currentY = 15; doc.setFontSize(16);
         doc.text(formattedChoiceTitle + " (cont.)", 14, currentY); currentY += 8;
       } else if (index > 0) {
@@ -1087,29 +1280,22 @@ export default function DietInsightsPage() {
       doc.text(groupTitle, 14, currentY);
       currentY += 6;
       doc.setFontSize(8);
-
-      let totalQtyText = "";
-      if (autoDetectedInputDuration === 7) {
-        totalQtyText = `Total / Day: ${group.total_qty_per_day.toFixed(4)} ${group.base_uom_name} | Total for ${targetDisplayDuration} Days: ${group.total_qty_for_target_duration.toFixed(4)} ${group.base_uom_name}`;
-      } else {
-         totalQtyText = `Total for ${targetDisplayDuration} Day${targetDisplayDuration > 1 ? 's' : ''}: ${group.total_qty_for_target_duration.toFixed(4)} ${group.base_uom_name}`;
-      }
-      doc.text(totalQtyText, 14, currentY); currentY += 4;
-
-      const speciesTextPdf = `Consuming Species: ${group.overall_consuming_species_details.length} ${formatSpeciesDetails(group.overall_consuming_species_details)}`;
-      const splitSpeciesTextPdf = doc.splitTextToSize(speciesTextPdf, doc.internal.pageSize.getWidth() - 28);
-      doc.text(splitSpeciesTextPdf, 14, currentY); currentY += (splitSpeciesTextPdf.length * 3.5) + 2;
+      
+      const overallSpeciesText = `Consuming Species: ${group.overall_consuming_species_details.length} ${formatSpeciesDetails(group.overall_consuming_species_details)}`;
+      const splitOverallSpeciesText = doc.splitTextToSize(overallSpeciesText, doc.internal.pageSize.getWidth() - 28);
+      doc.text(splitOverallSpeciesText, 14, currentY);
+      currentY += (splitOverallSpeciesText.length * 3.5) + 2;
 
       doc.text(`Consuming Animals: ${group.overall_consuming_animals_count}`, 14, currentY); currentY += 4;
       doc.text(`Consuming Enclosures: ${group.overall_consuming_enclosures_count}`, 14, currentY); currentY += 4;
+      
+      const scheduledTimesString = group.group_specific_meal_times.length > 0 ? group.group_specific_meal_times.join(', ') : 'N/A';
+      const mealTimesText = `Scheduled Meal Times: ${scheduledTimesString}`;
+      const splitMealTimesText = doc.splitTextToSize(mealTimesText, doc.internal.pageSize.getWidth() - 28);
+      doc.text(splitMealTimesText, 14, currentY);
+      currentY += (splitMealTimesText.length * 3.5) + 2;
 
-      const scheduledTimesString = group.scheduled_meal_times.length > 0 ? group.scheduled_meal_times.map(t => t.trim()).filter(Boolean).join(', ') : 'N/A';
-      const mealTimesTextPdf = `Scheduled Meal Times: ${scheduledTimesString}`;
-      const splitMealTimesTextPdf = doc.splitTextToSize(mealTimesTextPdf, doc.internal.pageSize.getWidth() - 28);
-      doc.text(splitMealTimesTextPdf, 14, currentY);
-      currentY += (splitMealTimesTextPdf.length * 3.5) + 2;
 
-      // Ingredient Table
       const ingredientTableColumns = [
           { header: "Ingredient Name", dataKey: "ingredient_name" },
           { header: "Prep Type", dataKey: "preparation_type_name" },
@@ -1143,8 +1329,7 @@ export default function DietInsightsPage() {
       });
       currentY = (doc as any).lastAutoTable.finalY + 3;
 
-      // Summary Table
-      const summaryTableBody = [];
+      const summaryTableBody: any[] = [];
       const uomTotals: Record<string, Record<string, number>> = {};
       group.group_specific_meal_times.forEach(mt => {
         uomTotals[mt] = {};
@@ -1206,29 +1391,21 @@ export default function DietInsightsPage() {
     doc.text(groupTitle, 14, currentY);
     currentY += 8;
     doc.setFontSize(8);
-
-    let totalQtyText = "";
-      if (autoDetectedInputDuration === 7) {
-        totalQtyText = `Total / Day: ${group.total_qty_per_day.toFixed(4)} ${group.base_uom_name} | Total for ${targetDisplayDuration} Days: ${group.total_qty_for_target_duration.toFixed(4)} ${group.base_uom_name}`;
-      } else {
-         totalQtyText = `Total for ${targetDisplayDuration} Day${targetDisplayDuration > 1 ? 's' : ''}: ${group.total_qty_for_target_duration.toFixed(4)} ${group.base_uom_name}`;
-      }
-    doc.text(totalQtyText, 14, currentY); currentY += 4;
-
-    const speciesTextPdf = `Consuming Species: ${group.overall_consuming_species_details.length} ${formatSpeciesDetails(group.overall_consuming_species_details)}`;
-    const splitSpeciesTextPdf = doc.splitTextToSize(speciesTextPdf, doc.internal.pageSize.getWidth() - 28);
-    doc.text(splitSpeciesTextPdf, 14, currentY); currentY += (splitSpeciesTextPdf.length * 3.5) + 2;
+    
+    const overallSpeciesText = `Consuming Species: ${group.overall_consuming_species_details.length} ${formatSpeciesDetails(group.overall_consuming_species_details)}`;
+    const splitOverallSpeciesText = doc.splitTextToSize(overallSpeciesText, doc.internal.pageSize.getWidth() - 28);
+    doc.text(splitOverallSpeciesText, 14, currentY);
+    currentY += (splitOverallSpeciesText.length * 3.5) + 2;
 
     doc.text(`Consuming Animals: ${group.overall_consuming_animals_count}`, 14, currentY); currentY += 4;
     doc.text(`Consuming Enclosures: ${group.overall_consuming_enclosures_count}`, 14, currentY); currentY += 4;
+    
+    const scheduledTimesString = group.group_specific_meal_times.length > 0 ? group.group_specific_meal_times.join(', ') : 'N/A';
+    const mealTimesText = `Scheduled Meal Times: ${scheduledTimesString}`;
+    const splitMealTimesText = doc.splitTextToSize(mealTimesText, doc.internal.pageSize.getWidth() - 28);
+    doc.text(splitMealTimesText, 14, currentY);
+    currentY += (splitMealTimesText.length * 3.5) + 2;
 
-    const scheduledTimesString = group.scheduled_meal_times.length > 0 ? group.scheduled_meal_times.map(t => t.trim()).filter(Boolean).join(', ') : 'N/A';
-    const mealTimesTextPdf = `Scheduled Meal Times: ${scheduledTimesString}`;
-    const splitMealTimesTextPdf = doc.splitTextToSize(mealTimesTextPdf, doc.internal.pageSize.getWidth() - 28);
-    doc.text(splitMealTimesTextPdf, 14, currentY);
-    currentY += (splitMealTimesTextPdf.length * 3.5) + 2;
-
-    // Ingredient Table
     const ingredientTableColumns = [
         { header: "Ingredient Name", dataKey: "ingredient_name" },
         { header: "Prep Type", dataKey: "preparation_type_name" },
@@ -1262,8 +1439,7 @@ export default function DietInsightsPage() {
     });
     currentY = (doc as any).lastAutoTable.finalY + 3;
 
-    // Summary Table
-    const summaryTableBody = [];
+    const summaryTableBody: any[] = [];
     const uomTotals: Record<string, Record<string, number>> = {};
     group.group_specific_meal_times.forEach(mt => {
       uomTotals[mt] = {};
@@ -1410,7 +1586,6 @@ export default function DietInsightsPage() {
               </div>
               <div id="duration-buttons" className="flex flex-wrap gap-2">
                 {getDayOptions(autoDetectedInputDuration)
-                  .filter(option => !(autoDetectedInputDuration === 7 && option.value === 1))
                   .map(option => (
                   <Button
                     key={option.value}
@@ -1527,12 +1702,177 @@ export default function DietInsightsPage() {
           <TabsContent value="ingredient-totals" className="space-y-6">
             {renderFilterAndSummaryCards(overallIngredientsData, isProcessingOverall)}
             <SectionCard
-              title={formattedDateRangeTitle}
-              data={overallIngredientsData?.data}
-              columns={overallIngredientsColumns}
+              title={formattedIngredientTotalsTitle}
               viewId="ingredient_totals_report"
               isLoading={isProcessingOverall || isLoading}
-            />
+              onPdfDownload={handleAllTypeIngredientsPdfDownload}
+            >
+              {(isProcessingOverall || isLoading) ? (
+                <div className="flex flex-col items-center justify-center h-[400px] text-muted-foreground">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary mb-2" />
+                  <p>Loading ingredient totals...</p>
+                </div>
+              ) : !displayableIngredientTotals || displayableIngredientTotals.length === 0 ? (
+                <p className="text-muted-foreground p-4 text-center">No ingredient data available based on current filters.</p>
+              ) : (
+                <div className="space-y-6">
+                  {displayableIngredientTotals.map((typeGroup) => {
+                    const itemKey = `type-${typeGroup.ingredient_type_name.replace(/\s+/g, '-')}`;
+                    const totalsByMealTimeAndUOM: Record<string, Record<string, number>> = {};
+                     typeGroup.group_specific_meal_times.forEach(mealTime => {
+                        totalsByMealTimeAndUOM[mealTime] = {};
+                        typeGroup.ingredients.forEach(ingredient => {
+                            const qty = ingredient.quantities_by_meal_time[mealTime] || 0;
+                            totalsByMealTimeAndUOM[mealTime][ingredient.base_uom_name] = 
+                                (totalsByMealTimeAndUOM[mealTime][ingredient.base_uom_name] || 0) + qty;
+                        });
+                    });
+                    const allUOMsInGroup = Array.from(new Set(typeGroup.ingredients.map(i => i.base_uom_name))).sort();
+                    
+                    return (
+                    <Card key={itemKey} className="overflow-hidden shadow-md rounded-lg">
+                      <CardHeader className="bg-muted/50 flex flex-row items-center justify-between p-4">
+                        <div>
+                          <CardTitle className="text-lg font-semibold text-accent">
+                            {typeGroup.ingredient_type_name}{selectedMealTimes.length === 1 ? ` - ${selectedMealTimes[0]}` : ''}
+                          </CardTitle>
+                           <CardDescription className="text-sm text-foreground space-y-1 mt-1">
+                                <div>
+                                  Total for {targetDisplayDuration} Day{targetDisplayDuration > 1 ? 's' : ''}: {Object.entries(typeGroup.total_quantities_for_target_duration).map(([uom, qty]) => `${qty.toFixed(2)} ${uom}`).join(', ') || 'N/A'}
+                                </div>
+                                <div className="flex flex-row flex-wrap items-baseline">
+                                  <span className="font-semibold whitespace-nowrap mr-1">Consuming Species:</span>
+                                  <Button
+                                      variant="link"
+                                      className="p-0 h-auto text-sm text-primary font-bold"
+                                      onClick={() => openSpeciesListModal(`Species consuming ${typeGroup.ingredient_type_name}`, typeGroup.overall_consuming_species_details)}
+                                      disabled={typeGroup.overall_consuming_species_details.length === 0}
+                                  >
+                                      {typeGroup.overall_consuming_species_details.length}
+                                  </Button>
+                                  {typeGroup.overall_consuming_species_details.length > 0 && (
+                                      <span className={`ml-1 ${!expandedSpeciesText[itemKey] ? "line-clamp-2" : ""}`}>
+                                        {formatSpeciesDetails(typeGroup.overall_consuming_species_details, !expandedSpeciesText[itemKey] ? 10 : undefined)}
+                                      </span>
+                                  )}
+                                  {typeGroup.overall_consuming_species_details.length > 10 && (
+                                      <Button variant="link" className="p-0 h-auto text-xs ml-1 whitespace-nowrap" onClick={() => toggleSpeciesTextExpansion(itemKey)}>
+                                          {expandedSpeciesText[itemKey] ? "(view less)" : "(view more)"}
+                                      </Button>
+                                  )}
+                                </div>
+                                <div>
+                                  <span className="font-semibold">Consuming Animals: </span>
+                                  <Button variant="link" className="p-0 h-auto text-sm text-primary font-bold" onClick={() => openAnimalListModal(`Animals consuming ${typeGroup.ingredient_type_name}`, typeGroup.overall_consuming_animal_ids)} disabled={typeGroup.overall_consuming_animals_count === 0}>
+                                      {typeGroup.overall_consuming_animals_count}
+                                  </Button>
+                                </div>
+                                <div>
+                                  <span className="font-semibold">Consuming Enclosures: </span>
+                                  <Button variant="link" className="p-0 h-auto text-sm text-primary font-bold" onClick={() => openEnclosureListModal(`Enclosures for ${typeGroup.ingredient_type_name}`, typeGroup.overall_consuming_enclosures)} disabled={typeGroup.overall_consuming_enclosures_count === 0}>
+                                      {typeGroup.overall_consuming_enclosures_count}
+                                  </Button>
+                                </div>
+                                <div>
+                                  <span className="font-semibold">Scheduled Meal Times: </span>
+                                  <div className="inline-flex flex-wrap gap-1 items-center">
+                                    {typeGroup.scheduled_meal_times && typeGroup.scheduled_meal_times.length > 0
+                                      ? typeGroup.scheduled_meal_times.map(time => <Badge key={time} variant="secondary" className="mr-1 mb-1">{time}</Badge>)
+                                      : <Badge variant="outline">N/A</Badge>}
+                                  </div>
+                                </div>
+                            </CardDescription>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleSingleTypeIngredientPdfDownload(typeGroup)}
+                          aria-label={`Download PDF for ${typeGroup.ingredient_type_name}`}
+                          disabled={isProcessingOverall || isLoading || typeGroup.ingredients.length === 0}
+                        >
+                          <Download className="mr-2 h-4 w-4" /> PDF
+                        </Button>
+                      </CardHeader>
+                      <CardContent className="p-0">
+                         <div className="overflow-x-auto rounded-md border">
+                            <table className="w-full text-sm">
+                                <thead className="bg-muted/50">
+                                    <tr>
+                                        <th className="p-2 text-left font-semibold text-muted-foreground whitespace-nowrap">Ingredients Name</th>
+                                        <th className="p-2 text-left font-semibold text-muted-foreground whitespace-nowrap">Preparation Types</th>
+                                        <th className="p-2 text-left font-semibold text-muted-foreground whitespace-nowrap">Cut Sizes</th>
+                                        <th className="p-2 text-left font-semibold text-muted-foreground whitespace-nowrap">Base UOM</th>
+                                        {typeGroup.group_specific_meal_times.map(mealTime => (
+                                            <th key={mealTime} className="p-2 text-left font-semibold text-muted-foreground whitespace-nowrap">{mealTime}</th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {typeGroup.ingredients.map((ingredient, ingIndex) => (
+                                        <tr key={ingIndex} className="border-b last:border-b-0 hover:bg-muted/20">
+                                            <td className="p-2 align-top whitespace-nowrap">{ingredient.ingredient_name}</td>
+                                            <td className="p-2 align-top whitespace-nowrap">{ingredient.preparation_type_name || 'N/A'}</td>
+                                            <td className="p-2 align-top whitespace-nowrap">{ingredient.cut_size_name || 'N/A'}</td>
+                                            <td className="p-2 align-top whitespace-nowrap">{ingredient.base_uom_name}</td>
+                                            {typeGroup.group_specific_meal_times.map(mealTime => (
+                                                <td key={`${mealTime}-${ingIndex}`} className="p-2 align-top whitespace-nowrap">
+                                                    {ingredient.quantities_by_meal_time[mealTime]?.toFixed(2) === '0.00' ? '' : ingredient.quantities_by_meal_time[mealTime]?.toFixed(2) || ''}
+                                                </td>
+                                            ))}
+                                        </tr>
+                                    ))}
+                                </tbody>
+                                 <tfoot className="bg-muted/50 font-semibold">
+                                    {allUOMsInGroup.map(uom => (
+                                        <tr key={`total-uom-${itemKey}-${uom}`}>
+                                            <td className="p-2 text-right font-medium text-muted-foreground whitespace-nowrap" colSpan={4}>Total Qty Required ({uom}):</td>
+                                            {typeGroup.group_specific_meal_times.map(mealTime => (
+                                                <td key={`total-${mealTime}-${uom}`} className="p-2 text-left whitespace-nowrap">
+                                                    {totalsByMealTimeAndUOM[mealTime]?.[uom]?.toFixed(2) === '0.00' ? '' : totalsByMealTimeAndUOM[mealTime]?.[uom]?.toFixed(2) || ''}
+                                                </td>
+                                            ))}
+                                        </tr>
+                                    ))}
+                                    <tr>
+                                        <td className="p-2 font-medium text-muted-foreground whitespace-nowrap" colSpan={4}># of Animals</td>
+                                        {typeGroup.group_specific_meal_times.map(mealTime => (
+                                            <td key={`animals-${mealTime}`} className="p-2 text-left whitespace-nowrap">
+                                                <Button variant="link" className="p-0 h-auto text-sm text-primary font-bold" onClick={() => openAnimalListModal(`Animals for ${typeGroup.ingredient_type_name} at ${mealTime}`, typeGroup.animals_per_meal_time[mealTime] || [])} disabled={(typeGroup.animals_per_meal_time[mealTime] || []).length === 0}>
+                                                    {(typeGroup.animals_per_meal_time[mealTime] || []).length}
+                                                </Button>
+                                            </td>
+                                        ))}
+                                    </tr>
+                                    <tr>
+                                        <td className="p-2 font-medium text-muted-foreground whitespace-nowrap" colSpan={4}># of Species</td>
+                                        {typeGroup.group_specific_meal_times.map(mealTime => (
+                                            <td key={`species-${mealTime}`} className="p-2 text-left whitespace-nowrap">
+                                                <Button variant="link" className="p-0 h-auto text-sm text-primary font-bold" onClick={() => openSpeciesListModal(`Species for ${typeGroup.ingredient_type_name} at ${mealTime}`, typeGroup.species_details_per_meal_time[mealTime] || [])} disabled={(typeGroup.species_details_per_meal_time[mealTime] || []).length === 0}>
+                                                    {(typeGroup.species_details_per_meal_time[mealTime] || []).length}
+                                                </Button>
+                                            </td>
+                                        ))}
+                                    </tr>
+                                    <tr>
+                                        <td className="p-2 font-medium text-muted-foreground whitespace-nowrap" colSpan={4}># of Enclosures</td>
+                                        {typeGroup.group_specific_meal_times.map(mealTime => (
+                                            <td key={`enclosures-${mealTime}`} className="p-2 text-left whitespace-nowrap">
+                                                <Button variant="link" className="p-0 h-auto text-sm text-primary font-bold" onClick={() => openEnclosureListModal(`Enclosures for ${typeGroup.ingredient_type_name} at ${mealTime}`, typeGroup.enclosures_per_meal_time[mealTime] || [])} disabled={(typeGroup.enclosures_per_meal_time[mealTime] || []).length === 0}>
+                                                    {(typeGroup.enclosures_per_meal_time[mealTime] || []).length}
+                                                </Button>
+                                            </td>
+                                        ))}
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                         {typeGroup.ingredients.length === 0 && <p className="text-muted-foreground p-4 text-center">No ingredients for this type.</p>}
+                      </CardContent>
+                    </Card>
+                  )})}
+                </div>
+              )}
+            </SectionCard>
           </TabsContent>
 
           <TabsContent value="recipes" className="space-y-6">
@@ -1552,20 +1892,18 @@ export default function DietInsightsPage() {
                 <p className="text-muted-foreground p-4 text-center">No recipe data available based on current filters.</p>
               ) : (
                 <div className="space-y-6">
-                  {displayableRecipes.map((recipe, index) => {
-                    const itemKey = `recipe-${recipe.recipe_name.replace(/\s+/g, '-')}-${index}`;
+                  {displayableRecipes.map((recipe) => {
+                    const itemKey = `recipe-${recipe.recipe_name.replace(/\s+/g, '-')}`;
                     const totalsByMealTimeAndUOM: Record<string, Record<string, number>> = {};
-                    const allUOMsInGroup = new Set<string>();
-
-                    recipe.ingredients.forEach(ingredient => {
-                        allUOMsInGroup.add(ingredient.base_uom_name);
-                        Object.entries(ingredient.quantities_by_meal_time).forEach(([mealTime, qty]) => {
-                            if (!totalsByMealTimeAndUOM[mealTime]) totalsByMealTimeAndUOM[mealTime] = {};
-                            if (!totalsByMealTimeAndUOM[mealTime][ingredient.base_uom_name]) totalsByMealTimeAndUOM[mealTime][ingredient.base_uom_name] = 0;
-                            totalsByMealTimeAndUOM[mealTime][ingredient.base_uom_name] += qty;
+                     recipe.group_specific_meal_times.forEach(mealTime => {
+                        totalsByMealTimeAndUOM[mealTime] = {};
+                        recipe.ingredients.forEach(ingredient => {
+                            const qty = ingredient.quantities_by_meal_time[mealTime] || 0;
+                            totalsByMealTimeAndUOM[mealTime][ingredient.base_uom_name] = 
+                                (totalsByMealTimeAndUOM[mealTime][ingredient.base_uom_name] || 0) + qty;
                         });
                     });
-                    const sortedUOMs = Array.from(allUOMsInGroup).sort();
+                    const allUOMsInGroup = Array.from(new Set(recipe.ingredients.map(i => i.base_uom_name))).sort();
                     
                     return (
                     <Card key={itemKey} className="overflow-hidden shadow-md rounded-lg">
@@ -1681,8 +2019,8 @@ export default function DietInsightsPage() {
                                     ))}
                                 </tbody>
                                  <tfoot className="bg-muted/50 font-semibold">
-                                    {sortedUOMs.map(uom => (
-                                        <tr key={`total-uom-${uom}`}>
+                                    {allUOMsInGroup.map(uom => (
+                                        <tr key={`total-uom-${itemKey}-${uom}`}>
                                             <td className="p-2 text-right font-medium text-muted-foreground whitespace-nowrap" colSpan={4}>Total Qty Required ({uom}):</td>
                                             {recipe.group_specific_meal_times.map(mealTime => (
                                                 <td key={`total-${mealTime}-${uom}`} className="p-2 text-left whitespace-nowrap">
@@ -1753,17 +2091,15 @@ export default function DietInsightsPage() {
                   {displayableCombos.map((comboGroup) => {
                     const itemKey = `combo-${comboGroup.combo_group_name.replace(/\s+/g, '-')}`;
                     const totalsByMealTimeAndUOM: Record<string, Record<string, number>> = {};
-                    const allUOMsInGroup = new Set<string>();
-
-                    comboGroup.ingredients.forEach(ingredient => {
-                        allUOMsInGroup.add(ingredient.base_uom_name);
-                        Object.entries(ingredient.quantities_by_meal_time).forEach(([mealTime, qty]) => {
-                            if (!totalsByMealTimeAndUOM[mealTime]) totalsByMealTimeAndUOM[mealTime] = {};
-                            if (!totalsByMealTimeAndUOM[mealTime][ingredient.base_uom_name]) totalsByMealTimeAndUOM[mealTime][ingredient.base_uom_name] = 0;
-                            totalsByMealTimeAndUOM[mealTime][ingredient.base_uom_name] += qty;
+                    comboGroup.group_specific_meal_times.forEach(mealTime => {
+                        totalsByMealTimeAndUOM[mealTime] = {};
+                        comboGroup.ingredients.forEach(ingredient => {
+                            const qty = ingredient.quantities_by_meal_time[mealTime] || 0;
+                            totalsByMealTimeAndUOM[mealTime][ingredient.base_uom_name] = 
+                                (totalsByMealTimeAndUOM[mealTime][ingredient.base_uom_name] || 0) + qty;
                         });
                     });
-                    const sortedUOMs = Array.from(allUOMsInGroup).sort();
+                    const allUOMsInGroup = Array.from(new Set(comboGroup.ingredients.map(i => i.base_uom_name))).sort();
 
                     return (
                     <Card key={itemKey} className="overflow-hidden shadow-md rounded-lg">
@@ -1837,8 +2173,8 @@ export default function DietInsightsPage() {
                           PDF
                         </Button>
                       </CardHeader>
-                      <CardContent className="p-4 space-y-4">
-                        <div className="overflow-x-auto rounded-md border">
+                      <CardContent className="p-0">
+                         <div className="overflow-x-auto rounded-md border">
                             <table className="w-full text-sm">
                                 <thead className="bg-muted/50">
                                     <tr>
@@ -1867,8 +2203,8 @@ export default function DietInsightsPage() {
                                     ))}
                                 </tbody>
                                 <tfoot className="bg-muted/50 font-semibold">
-                                    {sortedUOMs.map(uom => (
-                                        <tr key={`total-uom-${uom}`}>
+                                    {allUOMsInGroup.map(uom => (
+                                        <tr key={`total-uom-${itemKey}-${uom}`}>
                                             <td className="p-2 text-right font-medium text-muted-foreground whitespace-nowrap" colSpan={4}>Total Qty Required ({uom}):</td>
                                             {comboGroup.group_specific_meal_times.map(mealTime => (
                                                 <td key={`total-${mealTime}-${uom}`} className="p-2 text-left whitespace-nowrap">
@@ -1934,6 +2270,7 @@ export default function DietInsightsPage() {
                                 </tfoot>
                             </table>
                         </div>
+                         {comboGroup.ingredients.length === 0 && <p className="text-muted-foreground p-4 text-center">No ingredients for this combo.</p>}
                       </CardContent>
                     </Card>
                   )})}
@@ -1959,20 +2296,18 @@ export default function DietInsightsPage() {
                 <p className="text-muted-foreground p-4 text-center">No choice ingredient data available based on current filters.</p>
               ) : (
                 <div className="space-y-6">
-                  {displayableChoices.map((group, index) => {
-                    const itemKey = `choice-${group.choice_group_name.replace(/\s+/g, '-')}-${index}`;
+                  {displayableChoices.map((group) => {
+                    const itemKey = `choice-${group.choice_group_name.replace(/\s+/g, '-')}`;
                     const totalsByMealTimeAndUOM: Record<string, Record<string, number>> = {};
-                    const allUOMsInGroup = new Set<string>();
-
-                    group.ingredients.forEach(ingredient => {
-                        allUOMsInGroup.add(ingredient.base_uom_name);
-                        Object.entries(ingredient.quantities_by_meal_time).forEach(([mealTime, qty]) => {
-                            if (!totalsByMealTimeAndUOM[mealTime]) totalsByMealTimeAndUOM[mealTime] = {};
-                            if (!totalsByMealTimeAndUOM[mealTime][ingredient.base_uom_name]) totalsByMealTimeAndUOM[mealTime][ingredient.base_uom_name] = 0;
-                            totalsByMealTimeAndUOM[mealTime][ingredient.base_uom_name] += qty;
+                    group.group_specific_meal_times.forEach(mealTime => {
+                        totalsByMealTimeAndUOM[mealTime] = {};
+                        group.ingredients.forEach(ingredient => {
+                            const qty = ingredient.quantities_by_meal_time[mealTime] || 0;
+                            totalsByMealTimeAndUOM[mealTime][ingredient.base_uom_name] = 
+                                (totalsByMealTimeAndUOM[mealTime][ingredient.base_uom_name] || 0) + qty;
                         });
                     });
-                    const sortedUOMs = Array.from(allUOMsInGroup).sort();
+                    const allUOMsInGroup = Array.from(new Set(group.ingredients.map(i => i.base_uom_name))).sort();
 
                     return (
                     <Card key={itemKey} className="overflow-hidden shadow-md rounded-lg">
@@ -1982,18 +2317,6 @@ export default function DietInsightsPage() {
                             {group.choice_group_name}{selectedMealTimes.length === 1 ? ` - ${selectedMealTimes[0]}` : ''}
                           </CardTitle>
                           <CardDescription className="text-sm text-foreground space-y-1 mt-1">
-                            <div>
-                              {autoDetectedInputDuration === 7 ? (
-                                <>
-                                  Total / Day: {group.total_qty_per_day.toFixed(4)} {group.base_uom_name} <br />
-                                  Total for {targetDisplayDuration} Days: {group.total_qty_for_target_duration.toFixed(4)} {group.base_uom_name}
-                                </>
-                              ) : (
-                                <>
-                                  Total for {targetDisplayDuration} Day{targetDisplayDuration > 1 ? 's' : ''}: {group.total_qty_for_target_duration.toFixed(4)} {group.base_uom_name}
-                                </>
-                              )}
-                            </div>
                             <div className="flex flex-row flex-wrap items-baseline">
                               <span className="font-semibold whitespace-nowrap mr-1">Consuming Species:</span>
                                 <Button
@@ -2040,8 +2363,8 @@ export default function DietInsightsPage() {
                              <div>
                                 <span className="font-semibold">Scheduled Meal Times: </span>
                                 <div className="inline-flex flex-wrap gap-1 items-center">
-                                {group.scheduled_meal_times && group.scheduled_meal_times.length > 0
-                                  ? group.scheduled_meal_times.map(time => <Badge key={time} variant="secondary" className="mr-1 mb-1">{time}</Badge>)
+                                {group.group_specific_meal_times && group.group_specific_meal_times.length > 0
+                                  ? group.group_specific_meal_times.map(time => <Badge key={time} variant="secondary" className="mr-1 mb-1">{time}</Badge>)
                                   : <Badge variant="outline">N/A</Badge>}
                                 </div>
                               </div>
@@ -2058,7 +2381,7 @@ export default function DietInsightsPage() {
                           PDF
                         </Button>
                       </CardHeader>
-                      <CardContent className="p-4 space-y-4">
+                      <CardContent className="p-0">
                          <div className="overflow-x-auto rounded-md border">
                             <table className="w-full text-sm">
                                 <thead className="bg-muted/50">
@@ -2088,8 +2411,8 @@ export default function DietInsightsPage() {
                                     ))}
                                 </tbody>
                                  <tfoot className="bg-muted/50 font-semibold">
-                                    {sortedUOMs.map(uom => (
-                                        <tr key={`total-uom-${uom}`}>
+                                    {allUOMsInGroup.map(uom => (
+                                        <tr key={`total-uom-${itemKey}-${uom}`}>
                                             <td className="p-2 text-right font-medium text-muted-foreground whitespace-nowrap" colSpan={4}>Total Qty Required ({uom}):</td>
                                             {group.group_specific_meal_times.map(mealTime => (
                                                 <td key={`total-${mealTime}-${uom}`} className="p-2 text-left whitespace-nowrap">
@@ -2300,5 +2623,3 @@ export default function DietInsightsPage() {
     </div>
   );
 }
-
-    
