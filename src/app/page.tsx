@@ -25,10 +25,10 @@ import type {
 } from '@/types';
 import {
   parseExcelFile, processOverallIngredientTotals, processDetailedRawMaterialTotals, processRecipeData,
-  processComboIngredientUsage, getUniqueSiteNames, // Corrected from getAllUniqueSiteNames
-  getUniqueSpeciesNames, // Corrected from getAllUniqueSpeciesNames
-  getUniqueClassNames, // Corrected from getAllUniqueClassNames
-  getUniqueMealTimes, // Corrected from getAllUniqueMealTimes
+  processComboIngredientUsage, getUniqueSiteNames,
+  getUniqueSpeciesNames,
+  getUniqueClassNames,
+  getUniqueMealTimes,
   processChoiceIngredientUsage,
   applyGlobalFilters, getGlobalCounts
 } from '@/lib/excelParser';
@@ -55,7 +55,7 @@ const getDayOptions = (autoDetectedInputDuration: number) => {
           // options.unshift(oneDayOption); // "1 Day" will be hidden if input is 7 days
         }
         return options;
-    } else { 
+    } else {
          if (!options.some(opt => opt.value === 1)) {
           options.unshift(oneDayOption);
         }
@@ -73,7 +73,7 @@ export default function DietInsightsPage() {
   const [choiceIngredientsData, setChoiceIngredientsData] = useState<ProcessedChoiceIngredientsResult | null>(null);
 
   const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false); 
+  const [isLoading, setIsLoading] = useState(false);
 
   const [isProcessingOverall, setIsProcessingOverall] = useState(false);
   const [isProcessingDetailedRaw, setIsProcessingDetailedRaw] = useState(false);
@@ -109,7 +109,7 @@ export default function DietInsightsPage() {
   const [isSpeciesListModalOpen, setIsSpeciesListModalOpen] = useState(false);
   const [speciesListModalTitle, setSpeciesListModalTitle] = useState('');
   const [speciesListForModal, setSpeciesListForModal] = useState<SpeciesConsumptionDetail[]>([]);
-  
+
   const [isAnimalListModalOpen, setIsAnimalListModalOpen] = useState(false);
   const [animalListModalTitle, setAnimalListModalTitle] = useState('');
   const [animalListForModal, setAnimalListForModal] = useState<string[]>([]);
@@ -184,12 +184,11 @@ export default function DietInsightsPage() {
   }, [autoDetectedInputDuration, targetDisplayDuration]);
 
   const detailedRawMaterialColumns = useMemo((): ColumnDefinition<DetailedRawMaterialData>[] => {
-    const columns: ColumnDefinition<DetailedRawMaterialData>[] = [
+    return [
       { key: 'ingredient_name', header: 'Ingredient Name' },
       { key: 'qty_per_day', header: 'Qty / Day', cell: (item) => item.qty_per_day.toFixed(2) },
       { key: 'base_uom_name', header: 'Base UOM' },
     ];
-    return columns;
   }, []);
 
 
@@ -205,15 +204,15 @@ export default function DietInsightsPage() {
         header: 'Qty / Day',
         cell: (item) => item.qty_per_day.toFixed(4)
       });
-    } else { 
+    } else {
       columns.push({
         key: 'qty_per_day',
-        header: `Qty for 1 Day`, 
+        header: `Qty for 1 Day`,
         cell: (item) => item.qty_per_day.toFixed(4)
       });
     }
     columns.push({
-        key: 'total_qty_for_animals', 
+        key: 'total_qty_for_animals',
         header: `Total Qty for Animals (${targetDisplayDuration} Day${targetDisplayDuration > 1 ? 's' : ''})`,
         cell: (item) => ((item.qty_for_target_duration * (item.parent_consuming_animals_count || 0)).toFixed(4))
     });
@@ -250,7 +249,7 @@ export default function DietInsightsPage() {
     return columns;
   }, [autoDetectedInputDuration, targetDisplayDuration]);
 
-  
+
   const choiceIngredientDetailColumns = useMemo((): ColumnDefinition<ChoiceIngredientItem>[] => {
      const columns: ColumnDefinition<ChoiceIngredientItem>[] = [
       { key: 'ingredient_name', header: 'Ingredient Name' },
@@ -318,7 +317,7 @@ export default function DietInsightsPage() {
     setAutoDetectedInputDuration(1);
     setExpandedSpeciesText({});
 
-    const currentDayOptions = getDayOptions(1); 
+    const currentDayOptions = getDayOptions(1);
     const defaultTargetDuration = currentDayOptions.find(opt => opt.value === 1)?.value || currentDayOptions[0]?.value || 1;
     setTargetDisplayDuration(defaultTargetDuration);
 
@@ -338,7 +337,7 @@ export default function DietInsightsPage() {
     try {
       const { data: parsedData, detectedInputDuration, minDate, maxDate } = await parseExcelFile(file);
       setProgress(60);
-      setDietData(parsedData); 
+      setDietData(parsedData);
       setAutoDetectedInputDuration(detectedInputDuration);
       setExcelMinDate(minDate);
       setExcelMaxDate(maxDate);
@@ -347,7 +346,7 @@ export default function DietInsightsPage() {
       setAllSpeciesNames(getUniqueSpeciesNames(parsedData));
       setAllClassNames(getUniqueClassNames(parsedData));
       setAllMealTimes(getUniqueMealTimes(parsedData));
-      
+
       // Initialize unique filter options with all possible values from the uploaded file
       setUniqueSiteNames(getUniqueSiteNames(parsedData));
       setUniqueSpeciesNames(getUniqueSpeciesNames(parsedData));
@@ -357,14 +356,14 @@ export default function DietInsightsPage() {
 
       let newTargetDuration = targetDisplayDuration;
       if (detectedInputDuration === 7) {
-        // If 7-day input, and current target is 1 or not in 7-day options, set to 7
-        if (targetDisplayDuration === 1 || !getDayOptions(7).some(opt => opt.value === targetDisplayDuration)) {
-          newTargetDuration = 7;
+        const sevenDayOptions = getDayOptions(7);
+        if (!sevenDayOptions.some(opt => opt.value === targetDisplayDuration) || targetDisplayDuration === 1) {
+          newTargetDuration = sevenDayOptions.find(opt => opt.value === 7)?.value || sevenDayOptions[0]?.value || 7;
         }
       } else { // 1-day input
-         // If 1-day input, and current target is > 1 or not in 1-day options, set to 1
-        if (targetDisplayDuration > 1 || !getDayOptions(1).some(opt => opt.value === targetDisplayDuration)) {
-           newTargetDuration = 1;
+        const oneDayOptions = getDayOptions(1);
+         if (!oneDayOptions.some(opt => opt.value === targetDisplayDuration) || targetDisplayDuration > 1) {
+           newTargetDuration = oneDayOptions.find(opt => opt.value === 1)?.value || oneDayOptions[0]?.value || 1;
         }
       }
       setTargetDisplayDuration(newTargetDuration);
@@ -382,11 +381,11 @@ export default function DietInsightsPage() {
         setIsLoading(false);
         setProgress(0);
         if (parsedDataSuccessfully) {
-             setActiveTab("raw-materials"); 
+             setActiveTab("raw-materials");
         }
       }, 500);
     }
-  }, [targetDisplayDuration]); // Added targetDisplayDuration as a dependency
+  }, [targetDisplayDuration]);
 
  useEffect(() => {
     if (!dietData) {
@@ -530,7 +529,7 @@ export default function DietInsightsPage() {
       }
       return Array.from(new Set(filtered.map(entry => entry[targetKey]).filter(Boolean) as string[])).sort();
     };
-    
+
     // Update unique options for each filter based on selections in other filters
     setUniqueSiteNames(getDynamicUniqueValues(dietData, 'site_name', [], selectedClassNames, selectedSpeciesNames, selectedMealTimes));
     setUniqueClassNames(getDynamicUniqueValues(dietData, 'class_name', selectedSiteNames, [], selectedSpeciesNames, selectedMealTimes));
@@ -541,7 +540,7 @@ export default function DietInsightsPage() {
 
 
   const formattedDateRangeTitle = useMemo(() => {
-    const baseTitle = "Raw Material List"; 
+    const baseTitle = "Raw Material List";
     const suffix = "(Excluding Ingredients with Choice)";
 
     if (!excelMinDate) {
@@ -643,22 +642,22 @@ export default function DietInsightsPage() {
 
     displayableRecipes.forEach((recipe, index) => {
       if (index > 0) {
-        currentY += 15; 
+        currentY += 15;
       }
       const speciesDetailsString = formatSpeciesDetails(recipe.consuming_species_details);
       const scheduledTimesString = recipe.scheduled_meal_times.length > 0 ? recipe.scheduled_meal_times.map(t => t.trim()).filter(Boolean).join(', ') : 'N/A';
 
       const ingredientsByCutSize = groupIngredientsByCutSize(recipe.ingredients);
-      let estimatedRecipeHeight = 50 + (speciesDetailsString.length / 50 * 4) + (scheduledTimesString.length / 50 * 4); 
+      let estimatedRecipeHeight = 50 + (speciesDetailsString.length / 50 * 4) + (scheduledTimesString.length / 50 * 4);
       ingredientsByCutSize.forEach((ingredientsForCut, cutSize) => {
-        estimatedRecipeHeight += 10; 
-        estimatedRecipeHeight += ingredientsForCut.length * 8; 
+        estimatedRecipeHeight += 10;
+        estimatedRecipeHeight += ingredientsForCut.length * 8;
       });
 
 
-      if (currentY + estimatedRecipeHeight > doc.internal.pageSize.getHeight() - 20) { 
+      if (currentY + estimatedRecipeHeight > doc.internal.pageSize.getHeight() - 20) {
         doc.addPage();
-        currentY = 22; 
+        currentY = 22;
         doc.setFontSize(16);
         doc.text(formattedRecipesTitle + " (cont.)", 14, 16);
         doc.setFontSize(10);
@@ -683,9 +682,9 @@ export default function DietInsightsPage() {
       currentY += 5;
 
       const speciesText = `Consuming Species: ${recipe.consuming_species_details.length} ${formatSpeciesDetails(recipe.consuming_species_details)}`;
-      const splitSpeciesText = doc.splitTextToSize(speciesText, doc.internal.pageSize.getWidth() - 28); 
+      const splitSpeciesText = doc.splitTextToSize(speciesText, doc.internal.pageSize.getWidth() - 28);
       doc.text(splitSpeciesText, 14, currentY);
-      currentY += (splitSpeciesText.length * 4) + 1; 
+      currentY += (splitSpeciesText.length * 4) + 1;
 
       doc.text(`Consuming Animals: ${recipe.consuming_animals_count}`, 14, currentY);
       currentY += 5;
@@ -726,7 +725,7 @@ export default function DietInsightsPage() {
           styles: { fontSize: 8, cellPadding: 1.5, overflow: 'linebreak' },
           columnStyles: {text: {cellWidth: 'auto'}},
         });
-        currentY = (doc as any).lastAutoTable.finalY + 5; 
+        currentY = (doc as any).lastAutoTable.finalY + 5;
       });
     });
 
@@ -850,7 +849,7 @@ export default function DietInsightsPage() {
       if (index > 0) currentY += 15;
       const speciesDetailsString = formatSpeciesDetails(group.consuming_species_details);
       const scheduledTimesString = group.scheduled_meal_times.length > 0 ? group.scheduled_meal_times.map(t => t.trim()).filter(Boolean).join(', ') : 'N/A';
-      
+
       const ingredientsByCutSize = groupIngredientsByCutSize(group.ingredients);
       let estimatedHeight = 70 + (speciesDetailsString.length / 50 * 4) + (scheduledTimesString.length / 50 * 4);
       ingredientsByCutSize.forEach((ingredientsForCut, cutSize) => {
@@ -1334,6 +1333,12 @@ export default function DietInsightsPage() {
                 <div className="space-y-6">
                   {displayableCombos.map((comboGroup) => {
                     const itemKey = `combo-${comboGroup.combo_group_name.replace(/\s+/g, '-')}`;
+                    const columns = comboIngredientPivotColumns(comboGroup);
+                    const totalsByMealTime: Record<string, number> = {};
+                    comboGroup.group_specific_meal_times.forEach(mealTime => {
+                        totalsByMealTime[mealTime] = comboGroup.ingredients.reduce((sum, ing) => sum + (ing.quantities_by_meal_time[mealTime] || 0), 0);
+                    });
+
                     return (
                     <Card key={itemKey} className="overflow-hidden shadow-md rounded-lg">
                       <CardHeader className="bg-muted/50 flex flex-row items-center justify-between p-4">
@@ -1407,18 +1412,47 @@ export default function DietInsightsPage() {
                         </Button>
                       </CardHeader>
                       <CardContent className="p-4 space-y-4">
-                        <DataTable
-                          columns={comboIngredientPivotColumns(comboGroup)}
-                          data={comboGroup.ingredients}
-                          caption={`Ingredients for ${comboGroup.combo_group_name}`}
-                        />
+                        <div className="overflow-x-auto rounded-md border">
+                            <table className="w-full text-sm">
+                                <thead className="bg-muted/50">
+                                    <tr>
+                                        {columns.map(col => (
+                                            <th key={String(col.key)} className="p-2 text-left font-semibold text-muted-foreground">{col.header}</th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {comboGroup.ingredients.map((ingredient, ingIndex) => (
+                                        <tr key={ingIndex} className="border-b last:border-b-0 hover:bg-muted/20">
+                                            {columns.map(col => (
+                                                <td key={`${String(col.key)}-${ingIndex}`} className="p-2 align-top">
+                                                    {col.cell ? col.cell(ingredient) : String((ingredient as any)[col.key] ?? '')}
+                                                </td>
+                                            ))}
+                                        </tr>
+                                    ))}
+                                </tbody>
+                                <tfoot className="bg-muted/50 font-semibold">
+                                    <tr>
+                                        <td className="p-2 text-right" colSpan={columns.findIndex(col => col.key === `meal_time_${comboGroup.group_specific_meal_times[0]}`)}>Total Qty Required:</td>
+                                        {comboGroup.group_specific_meal_times.map(mealTime => (
+                                            <td key={`total-${mealTime}`} className="p-2 text-left">
+                                                {totalsByMealTime[mealTime]?.toFixed(4) || '0.0000'}
+                                            </td>
+                                        ))}
+                                        {columns.length - comboGroup.group_specific_meal_times.length - columns.findIndex(col => col.key === `meal_time_${comboGroup.group_specific_meal_times[0]}`)-1 > 0 && (
+                                          <td colSpan={columns.length - comboGroup.group_specific_meal_times.length - columns.findIndex(col => col.key === `meal_time_${comboGroup.group_specific_meal_times[0]}`)-1}></td>
+                                        )}
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
                         <div className="mt-4 p-2 border rounded-md">
-                          
                           <div className="overflow-x-auto">
                             <table className="w-full text-sm text-left">
                                 <thead className="text-xs text-muted-foreground uppercase bg-muted/50">
                                     <tr>
-                                        <th scope="col" className="px-3 py-2 text-muted-foreground"></th>
+                                        <th scope="col" className="px-3 py-2 text-muted-foreground">Time Slot</th>
                                         {comboGroup.group_specific_meal_times.map(mealTime => (
                                             <th scope="col" key={mealTime} className="px-3 py-2 text-center">{mealTime}</th>
                                         ))}
@@ -1775,3 +1809,4 @@ export default function DietInsightsPage() {
   );
 }
 
+    
