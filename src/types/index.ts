@@ -50,13 +50,11 @@ export interface ProcessedIngredientTotalsResult {
   totalSpecies: number; // Global count based on filters
 }
 
-export interface DetailedRawMaterialData {
+export interface DetailedRawMaterialData { // Used for "Raw Materials Required" tab
   ingredient_name: string;
-  preparation_type_name?: string;
-  cut_size_name?: string;
   base_uom_name: string;
   qty_per_day: number;
-  qty_for_target_duration: number;
+  qty_for_target_duration: number; // Kept for consistency in processing function, UI will use qty_per_day
 }
 
 export interface ProcessedDetailedRawMaterialResult {
@@ -165,3 +163,4 @@ export interface ColumnDefinition<T extends object> {
   header: string;
   cell?: (row: T) => React.ReactNode;
 }
+

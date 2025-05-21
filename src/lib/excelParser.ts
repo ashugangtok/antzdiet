@@ -106,7 +106,7 @@ export const parseExcelFile = (file: File): Promise<CustomParsedExcelData> => {
           }
 
           if (currentDate) {
-            entry.date = currentDate;
+            entry.date = currentDate; // Ensure date is stored as Date object if valid
             validDates.push(currentDate);
             if (!minDateEncountered || currentDate < minDateEncountered) {
               minDateEncountered = currentDate;
@@ -114,8 +114,12 @@ export const parseExcelFile = (file: File): Promise<CustomParsedExcelData> => {
             if (!maxDateEncountered || currentDate > maxDateEncountered) {
               maxDateEncountered = currentDate;
             }
+          } else {
+            // Retain original value as string if not a valid date
+            entry.date = String(dateValue);
           }
         }
+
 
         let detectedInputDuration = 1;
         if (validDates.length > 0 && minDateEncountered && maxDateEncountered) {
@@ -227,7 +231,7 @@ export const processOverallIngredientTotals = ( // For the simplified "Ingredien
   };
 };
 
-export const processDetailedRawMaterialTotals = (
+export const processDetailedRawMaterialTotals = ( // For "Raw Materials Required" tab
   globallyFilteredData: DietEntry[],
   globalTotalAnimals: number,
   globalTotalSpecies: number,
@@ -241,18 +245,15 @@ export const processDetailedRawMaterialTotals = (
   const grouped: Record<string, {
     raw_total_qty: number;
     ingredient_name: string;
-    preparation_type_name?: string;
-    cut_size_name?: string;
     base_uom_name: string;
   }> = {};
 
   ingredientsToSum.forEach(entry => {
-    const key = `${entry.ingredient_name}-${entry.preparation_type_name || 'N/A'}-${entry.cut_size_name || 'N/A'}-${entry.base_uom_name}`;
+    // Group only by ingredient name and base UOM
+    const key = `${entry.ingredient_name}-${entry.base_uom_name}`;
     if (!grouped[key]) {
       grouped[key] = {
         ingredient_name: entry.ingredient_name,
-        preparation_type_name: entry.preparation_type_name,
-        cut_size_name: entry.cut_size_name,
         base_uom_name: entry.base_uom_name,
         raw_total_qty: 0,
       };
@@ -264,11 +265,9 @@ export const processDetailedRawMaterialTotals = (
     const qtyPerDay = item.raw_total_qty / (actualInputDuration || 1);
     return {
       ingredient_name: item.ingredient_name,
-      preparation_type_name: item.preparation_type_name,
-      cut_size_name: item.cut_size_name,
       base_uom_name: item.base_uom_name,
       qty_per_day: parseFloat(qtyPerDay.toFixed(2)),
-      qty_for_target_duration: parseFloat((qtyPerDay * targetOutputDuration).toFixed(2)),
+      qty_for_target_duration: parseFloat((qtyPerDay * targetOutputDuration).toFixed(2)), // Still calculated for potential future use or consistency
     };
   });
 
@@ -294,6 +293,7 @@ export const processRecipeData = (
     mealTimes: Set<string>;
   }> = {};
 
+  // Determine consumers for each recipe from the original, unfiltered data
   originalDietData
     .filter(e => typeof e.type === 'string' && e.type.toLowerCase() === 'recipe' && e.type_name)
     .forEach(entry => {
@@ -788,3 +788,4 @@ export const getUniqueMealTimes = (data: DietEntry[]): string[] => {
   const mealTimes = new Set(data.map(entry => entry.meal_time).filter(Boolean) as string[]);
   return Array.from(mealTimes).sort();
 };
+
