@@ -22,14 +22,12 @@ export const REQUIRED_COLUMNS: (keyof DietEntry)[] = [
 ];
 
 // Define time ranges for the filter
-const mealTimeRangeDefinitions = [
-    { label: "00:30 - 06:00", value: "0030_0600", startMinutes: 30, endMinutes: 360 },
-    { label: "06:00 - 09:00", value: "0600_0900", startMinutes: 360, endMinutes: 540 },
-    { label: "09:00 - 12:00", value: "0900_1200", startMinutes: 540, endMinutes: 720 },
-    { label: "12:00 - 15:00", value: "1200_1500", startMinutes: 720, endMinutes: 900 },
-    { label: "15:00 - 18:00", value: "1500_1800", startMinutes: 900, endMinutes: 1080 },
-    { label: "18:00 - 21:00", value: "1800_2100", startMinutes: 1080, endMinutes: 1260 },
-    { label: "21:00 - 00:30 (next day)", value: "2100_0030_next", startMinutes1: 1260, endMinutes1: 1440, startMinutes2: 0, endMinutes2: 30 }
+const timeOfDaySegmentDefinitions = [
+  { id: 'all_day', label: 'All Day', startMinutes: 0, endMinutes: 1439 }, // Represents no filter
+  { id: 'before_6am', label: 'Before 6 AM', startMinutes: 0, endMinutes: 359 }, // 00:00 to 05:59
+  { id: '6am_12pm', label: '6 AM to 12 PM', startMinutes: 360, endMinutes: 719 }, // 06:00 to 11:59
+  { id: '12pm_6pm', label: '12 PM to 6 PM', startMinutes: 720, endMinutes: 1079 }, // 12:00 to 17:59
+  { id: 'after_6pm', label: 'After 6 PM', startMinutes: 1080, endMinutes: 1439 }, // 18:00 to 23:59
 ];
 
 function parseMealTime(timeStr: string): number | null {
@@ -80,21 +78,21 @@ export const parseExcelFile = (file: File): Promise<CustomParsedExcelData> => {
             if (['ingredient_qty', 'wastage_qty', 'total_animal'].includes(normalizedKey)) {
               newRow[normalizedKey as keyof DietEntry] = parseFloat(String(row[key])) || 0;
             } else if (normalizedKey === 'date' && row[key]) {
-                if (typeof row[key] === 'number' && row[key] > 25569) { // Excel date number
+                if (typeof row[key] === 'number' && row[key] > 25569) { 
                     const excelDate = XLSX.SSF.parse_date_code(row[key]);
                     if (excelDate) {
                          newRow.date = new Date(Date.UTC(excelDate.y, excelDate.m - 1, excelDate.d, excelDate.H || 0, excelDate.M || 0, excelDate.S || 0));
                     } else {
-                        newRow.date = String(row[key]); // Fallback if parse_date_code fails
+                        newRow.date = String(row[key]); 
                     }
-                } else if (row[key] instanceof Date && !isNaN(row[key].getTime())) { // JS Date object
+                } else if (row[key] instanceof Date && !isNaN(row[key].getTime())) { 
                     newRow.date = row[key];
-                } else { // String date
+                } else { 
                     const parsedDate = new Date(String(row[key]));
                     if (!isNaN(parsedDate.getTime())) {
                         newRow.date = parsedDate;
                     } else {
-                        newRow.date = String(row[key]); // Fallback
+                        newRow.date = String(row[key]); 
                     }
                 }
             }
@@ -160,13 +158,12 @@ export const parseExcelFile = (file: File): Promise<CustomParsedExcelData> => {
         let detectedInputDuration = 1;
         if (validDates.length > 0 && minDateEncountered && maxDateEncountered) {
           const dayDifference = differenceInCalendarDays(maxDateEncountered, minDateEncountered) + 1;
-          if (dayDifference >= 6 && dayDifference <= 8) { // Looser check for 7 days
+          if (dayDifference >= 6 && dayDifference <= 8) { 
             detectedInputDuration = 7;
           } else {
-            detectedInputDuration = 1; // Default to 1 if not clearly 7
+            detectedInputDuration = 1; 
           }
         } else {
-            // If no valid dates or only one date, assume 1 day.
             detectedInputDuration = 1;
         }
 
@@ -194,7 +191,7 @@ export const applyGlobalFilters = (
   enclosureNamesFilter?: string[] | null,
   classNamesFilter?: string[] | null,
   speciesNamesFilter?: string[] | null,
-  mealTimeRangeLabels?: string[] | null // Expects labels like "06:00 - 09:00"
+  timeSegmentFilter?: { startMinutes: number; endMinutes: number } | null
 ): DietEntry[] => {
   if (!data) return [];
   let filtered = data;
@@ -214,23 +211,13 @@ export const applyGlobalFilters = (
     filtered = filtered.filter(entry => entry.common_name && speciesNamesFilter.includes(entry.common_name));
   }
   
-  if (mealTimeRangeLabels && mealTimeRangeLabels.length > 0) {
-    const selectedRanges = mealTimeRangeDefinitions.filter(opt => mealTimeRangeLabels.includes(opt.label));
-    if (selectedRanges.length > 0) {
-      filtered = filtered.filter(entry => {
-        const entryTimeMinutes = parseMealTime(entry.meal_time || '');
-        if (entryTimeMinutes === null) return false; // Or true, depending on desired behavior for unparseable times
+  if (timeSegmentFilter) {
+    filtered = filtered.filter(entry => {
+      const entryTimeMinutes = parseMealTime(entry.meal_time || '');
+      if (entryTimeMinutes === null) return false; 
 
-        return selectedRanges.some(rangeOption => {
-          if (rangeOption.value === "2100_0030_next") {
-            return (entryTimeMinutes >= rangeOption.startMinutes1! && entryTimeMinutes < rangeOption.endMinutes1!) ||
-                   (entryTimeMinutes >= rangeOption.startMinutes2! && entryTimeMinutes < rangeOption.endMinutes2!);
-          } else {
-            return entryTimeMinutes >= rangeOption.startMinutes! && entryTimeMinutes < rangeOption.endMinutes!;
-          }
-        });
-      });
-    }
+      return entryTimeMinutes >= timeSegmentFilter.startMinutes && entryTimeMinutes <= timeSegmentFilter.endMinutes;
+    });
   }
   return filtered;
 };
@@ -248,8 +235,8 @@ export const getGlobalCounts = (filteredData: DietEntry[]): { totalAnimals: numb
 
 
 export const processOverallIngredientTotals = (
-  originalDietData: DietEntry[],
-  globallyFilteredData: DietEntry[],
+  originalDietData: DietEntry[], // For accurate overall consumer mapping
+  globallyFilteredData: DietEntry[], // For quantity calculations based on current filters
   globalCounts: { totalAnimals: number; totalSpecies: number },
   actualInputDuration: number = 1,
   targetOutputDuration: number = 1
@@ -266,16 +253,15 @@ export const processOverallIngredientTotals = (
     const entriesForThisTypeGlobal = relevantEntriesForQty.filter(e => (e.type || 'Unknown Type') === typeName);
     if (entriesForThisTypeGlobal.length === 0) return;
 
-    // Overall consumer details for this type_name
     const originalEntriesForThisType = originalDietData.filter(
         e => (e.type || 'Unknown Type') === typeName && 
              !['recipe', 'combo', 'ingredientwithchoice'].includes(e.type?.toLowerCase() || '')
     );
 
-    const overallSpeciesMap: Map<string, Set<string>> = new Map(); // Species name -> Set of animal IDs
+    const overallSpeciesMap: Map<string, Set<string>> = new Map(); 
     const overallAnimalIdSet: Set<string> = new Set();
     const overallEnclosureSet: Set<string> = new Set();
-    const overallMealTimesForTypeSet: Set<string> = new Set(); // Unique meal times for *this type*
+    const overallMealTimesForTypeSet: Set<string> = new Set();
 
     originalEntriesForThisType.forEach(e => {
         if (e.animal_id) overallAnimalIdSet.add(String(e.animal_id));
@@ -333,7 +319,6 @@ export const processOverallIngredientTotals = (
     const enclosures_per_meal_time: Record<string, string[]> = {};
 
     group_specific_meal_times.forEach(mealTime => {
-      // Use originalEntriesForThisType for per-meal-time consumer counts to reflect all potential consumers at that time
       const mealTimeEntriesForType = originalEntriesForThisType.filter(e => e.meal_time === mealTime);
       animals_per_meal_time[mealTime] = Array.from(new Set(mealTimeEntriesForType.map(e => String(e.animal_id)).filter(Boolean))).sort();
 
@@ -387,7 +372,7 @@ export const processDetailedRawMaterialTotals = (
   globallyFilteredData: DietEntry[],
   globalCounts: { totalAnimals: number; totalSpecies: number },
   actualInputDuration: number = 1,
-  targetOutputDuration: number = 1 // Added for consistency, though UI for this tab uses qty_per_day
+  targetOutputDuration: number = 1 
 ): ProcessedDetailedRawMaterialResult => {
   const ingredientsToSum = globallyFilteredData.filter(entry =>
     typeof entry.type === 'string' && entry.type.toLowerCase() !== 'ingredientwithchoice'
@@ -400,7 +385,7 @@ export const processDetailedRawMaterialTotals = (
   }> = {};
 
   ingredientsToSum.forEach(entry => {
-      const key = `${entry.ingredient_name}-${entry.base_uom_name}`; // Grouping by name and UOM only
+      const key = `${entry.ingredient_name}-${entry.base_uom_name}`; 
       if (!grouped[key]) {
         grouped[key] = {
           ingredient_name: entry.ingredient_name,
@@ -413,12 +398,11 @@ export const processDetailedRawMaterialTotals = (
 
   const resultData: DetailedRawMaterialData[] = Object.values(grouped).map(item => {
     const qtyPerDay = item.raw_total_qty / (actualInputDuration || 1);
-    const qtyForTarget = qtyPerDay * targetOutputDuration; // Calculate for data consistency
     return {
       ingredient_name: item.ingredient_name,
       base_uom_name: item.base_uom_name,
       qty_per_day: parseFloat(qtyPerDay.toFixed(2)),
-      qty_for_target_duration: parseFloat(qtyForTarget.toFixed(2)), // Store it
+      qty_for_target_duration: parseFloat((qtyPerDay * targetOutputDuration).toFixed(2)), 
     };
   }).sort((a, b) => a.ingredient_name.localeCompare(b.ingredient_name));
 
@@ -431,8 +415,8 @@ export const processDetailedRawMaterialTotals = (
 
 
 export const processRecipeData = (
-  originalDietData: DietEntry[], // For accurate overall consumer mapping
-  globallyFilteredData: DietEntry[], // For quantity calculations based on current filters
+  originalDietData: DietEntry[], 
+  globallyFilteredData: DietEntry[],
   globalCounts: { totalAnimals: number; totalSpecies: number },
   actualInputDuration: number = 1,
   targetOutputDuration: number = 1
@@ -448,7 +432,6 @@ export const processRecipeData = (
     const entriesForThisRecipeGlobal = recipeEntriesForQtyCalc.filter(e => (e.type_name || 'Unknown Recipe') === recipeName);
     if (entriesForThisRecipeGlobal.length === 0) return;
 
-    // Overall consumer details for this recipe_name from original data
     const originalEntriesForThisRecipe = originalDietData.filter(
       e => (e.type_name || 'Unknown Recipe') === recipeName && typeof e.type === 'string' && e.type.toLowerCase() === 'recipe'
     );
@@ -470,14 +453,14 @@ export const processRecipeData = (
 
 
     const groupSpecificMealTimesSet = new Set<string>();
-    entriesForThisRecipeGlobal.forEach(e => { // Use globally filtered entries to determine relevant meal times for columns
+    originalEntriesForThisRecipe.forEach(e => { 
         if(e.meal_time) groupSpecificMealTimesSet.add(e.meal_time.trim());
     });
     const group_specific_meal_times = Array.from(groupSpecificMealTimesSet).sort();
 
     const uniqueIngredientsMap: Record<string, RecipeIngredientItem> = {};
-    let recipeTotalQtyPerDay = 0;
-    let recipeTotalQtyForTargetDuration = 0;
+    let recipeTotalQtyPerDayFromSumOfParts = 0;
+    let recipeTotalQtyForTargetDurationFromSumOfParts = 0;
 
     entriesForThisRecipeGlobal.forEach(entry => {
         const key = `${entry.ingredient_name}-${entry.preparation_type_name || 'N/A'}-${entry.cut_size_name || 'N/A'}-${entry.base_uom_name}`;
@@ -488,13 +471,12 @@ export const processRecipeData = (
                 cut_size_name: entry.cut_size_name,
                 base_uom_name: entry.base_uom_name,
                 quantities_by_meal_time: {},
-                qty_per_day: 0, // Per-ingredient daily contribution to the recipe
-                qty_for_target_duration: 0, // Per-ingredient target duration contribution to the recipe
+                qty_per_day: 0, 
+                qty_for_target_duration: 0, 
                 total_qty_for_target_duration_across_meal_times: 0,
                 parent_consuming_animals_count: overallAnimalIdSet.size,
             };
         }
-         // Accumulate raw qty for per-ingredient daily/target calculation
         const ingQtyPerDay = (Number(entry.ingredient_qty) || 0) / (actualInputDuration || 1);
         uniqueIngredientsMap[key].qty_per_day += ingQtyPerDay;
         uniqueIngredientsMap[key].qty_for_target_duration += ingQtyPerDay * targetOutputDuration;
@@ -504,19 +486,19 @@ export const processRecipeData = (
     const recipeItems: RecipeIngredientItem[] = Object.values(uniqueIngredientsMap).map(item => {
       item.qty_per_day = parseFloat(item.qty_per_day.toFixed(4));
       item.qty_for_target_duration = parseFloat(item.qty_for_target_duration.toFixed(4));
-      recipeTotalQtyPerDay += item.qty_per_day;
-      recipeTotalQtyForTargetDuration += item.qty_for_target_duration;
+      recipeTotalQtyPerDayFromSumOfParts += item.qty_per_day;
+      recipeTotalQtyForTargetDurationFromSumOfParts += item.qty_for_target_duration;
 
       let totalForIngredientAcrossMealsForTargetDuration = 0;
       group_specific_meal_times.forEach(mealTime => {
-          const entriesForMeal = entriesForThisRecipeGlobal.filter(
+          const entriesForMealAndIngredient = entriesForThisRecipeGlobal.filter(
               e => e.ingredient_name === item.ingredient_name &&
                    (e.preparation_type_name || 'N/A') === (item.preparation_type_name || 'N/A') &&
                    (e.cut_size_name || 'N/A') === (item.cut_size_name || 'N/A') &&
                    e.base_uom_name === item.base_uom_name &&
                    e.meal_time === mealTime
           );
-          let sumQtyForMealRaw = entriesForMeal.reduce((sum, curr) => sum + (Number(curr.ingredient_qty) || 0), 0);
+          let sumQtyForMealRaw = entriesForMealAndIngredient.reduce((sum, curr) => sum + (Number(curr.ingredient_qty) || 0), 0);
           const qtyPerDayForMeal = sumQtyForMealRaw / (actualInputDuration || 1);
           const qtyForTargetDurationForMeal = qtyPerDayForMeal * targetOutputDuration;
           item.quantities_by_meal_time[mealTime] = parseFloat(qtyForTargetDurationForMeal.toFixed(4));
@@ -532,7 +514,6 @@ export const processRecipeData = (
     const enclosures_per_meal_time: Record<string, string[]> = {};
 
     group_specific_meal_times.forEach(mealTime => {
-      // Use originalEntriesForThisRecipe for per-meal-time consumer counts
       const mealTimeEntries = originalEntriesForThisRecipe.filter(e => e.meal_time === mealTime);
       animals_per_meal_time[mealTime] = Array.from(new Set(mealTimeEntries.map(e => String(e.animal_id)).filter(Boolean))).sort();
 
@@ -557,8 +538,8 @@ export const processRecipeData = (
 
     finalGroupedRecipes.push({
       recipe_name: recipeName,
-      total_qty_per_day: parseFloat(recipeTotalQtyPerDay.toFixed(4)),
-      total_qty_for_target_duration: parseFloat(recipeTotalQtyForTargetDuration.toFixed(4)),
+      total_qty_per_day: parseFloat(recipeTotalQtyPerDayFromSumOfParts.toFixed(4)),
+      total_qty_for_target_duration: parseFloat(recipeTotalQtyForTargetDurationFromSumOfParts.toFixed(4)),
       base_uom_name: recipeUom,
       ingredients: recipeItems,
       overall_consuming_species_details,
@@ -627,7 +608,7 @@ export const processComboIngredientUsage = (
 
 
     const groupSpecificMealTimesSet = new Set<string>();
-    entriesForThisGroupGlobal.forEach(e => { // Use globally filtered for column definition
+    originalEntriesForThisGroup.forEach(e => { 
         if(e.meal_time) groupSpecificMealTimesSet.add(e.meal_time.trim());
     });
     const group_specific_meal_times = Array.from(groupSpecificMealTimesSet).sort();
@@ -761,7 +742,7 @@ export const processChoiceIngredientUsage = (
 
 
     const groupSpecificMealTimesSet = new Set<string>();
-    entriesForThisGroupGlobal.forEach(e => {
+    originalEntriesForThisGroup.forEach(e => {
         if(e.meal_time) groupSpecificMealTimesSet.add(e.meal_time.trim());
     });
     const group_specific_meal_times = Array.from(groupSpecificMealTimesSet).sort();
@@ -887,7 +868,6 @@ export const getUniqueClassNames = (data: DietEntry[]): string[] => {
   return Array.from(classNames).sort();
 };
 
-// Removed getUniqueMealTimes as options are now static
 
 export const getDynamicUniqueFilterOptions = (
   originalData: DietEntry[],
@@ -898,7 +878,7 @@ export const getDynamicUniqueFilterOptions = (
     enclosureNames: string[];
     classNames: string[];
     speciesNames: string[];
-    mealTimes: string[]; // This will be selected range labels
+    timeSegment: { startMinutes: number; endMinutes: number } | null;
   }
 ): string[] => {
   if (!originalData) return [];
@@ -921,27 +901,15 @@ export const getDynamicUniqueFilterOptions = (
     filteredData = filteredData.filter(e => e.common_name && currentFilters.speciesNames.includes(e.common_name));
   }
   
-  // Apply time range filter if targetKey is not 'meal_time'
-  if (targetKey !== 'meal_time' && currentFilters.mealTimes.length > 0) {
-      const selectedRanges = mealTimeRangeDefinitions.filter(opt => currentFilters.mealTimes.includes(opt.label));
-      if (selectedRanges.length > 0) {
-        filteredData = filteredData.filter(entry => {
-            const entryTimeMinutes = parseMealTime(entry.meal_time || '');
-            if (entryTimeMinutes === null) return false;
-            return selectedRanges.some(rangeOption => {
-                if (rangeOption.value === "2100_0030_next") {
-                    return (entryTimeMinutes >= rangeOption.startMinutes1! && entryTimeMinutes < rangeOption.endMinutes1!) ||
-                           (entryTimeMinutes >= rangeOption.startMinutes2! && entryTimeMinutes < rangeOption.endMinutes2!);
-                } else {
-                    return entryTimeMinutes >= rangeOption.startMinutes! && entryTimeMinutes < rangeOption.endMinutes!;
-                }
-            });
-        });
-      }
+  // Apply time segment filter if targetKey is not related to time directly
+  if (targetKey !== 'meal_time' && currentFilters.timeSegment) {
+      const { startMinutes, endMinutes } = currentFilters.timeSegment;
+      filteredData = filteredData.filter(entry => {
+          const entryTimeMinutes = parseMealTime(entry.meal_time || '');
+          if (entryTimeMinutes === null) return false;
+          return entryTimeMinutes >= startMinutes && entryTimeMinutes <= endMinutes;
+      });
   }
-
   return Array.from(new Set(filteredData.map(entry => entry[targetKey]).filter(Boolean) as string[])).sort();
 };
-
-
     
