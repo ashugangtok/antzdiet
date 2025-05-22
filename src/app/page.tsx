@@ -39,6 +39,7 @@ import { Leaf, Utensils, Filter, Loader2, ChevronsUpDown, Download, Info, FileSp
 import { format } from 'date-fns';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
+import type { jsPDFDocument } from 'jspdf-autotable';
 import { DataTable } from '@/components/DataTable';
 
 
@@ -164,7 +165,7 @@ export default function DietInsightsPage() {
     return formattedString;
   };
 
- const detailedRawMaterialColumns = useMemo((): ColumnDefinition<DetailedRawMaterialData>[] => {
+ const detailedRawMaterialColumns: ColumnDefinition<DetailedRawMaterialData>[] = useMemo(() => {
     return [
       { key: 'ingredient_name', header: 'Ingredient Name' },
       { key: 'qty_per_day', header: 'Qty / Day', cell: (item) => item.qty_per_day.toFixed(2) },
@@ -297,7 +298,7 @@ export default function DietInsightsPage() {
       try {
         const overallResult = processOverallIngredientTotals(
           dietData, 
-          globallyFilteredData, globalCounts.totalAnimals, globalCounts.totalSpecies,
+          globallyFilteredData, globalCounts,
           autoDetectedInputDuration, targetDisplayDuration
         );
         setOverallIngredientsData(overallResult);
@@ -311,7 +312,7 @@ export default function DietInsightsPage() {
 
       try {
         const detailedRawResult = processDetailedRawMaterialTotals(
-          globallyFilteredData, globalCounts.totalAnimals, globalCounts.totalSpecies,
+          globallyFilteredData, globalCounts,
           autoDetectedInputDuration, targetDisplayDuration
         );
         setDetailedRawMaterialsData(detailedRawResult);
@@ -327,7 +328,7 @@ export default function DietInsightsPage() {
         const recipeResult = processRecipeData(
           dietData, 
           globallyFilteredData,
-          globalCounts.totalAnimals, globalCounts.totalSpecies,
+          globalCounts,
           autoDetectedInputDuration, targetDisplayDuration
         );
         setRecipesData(recipeResult);
@@ -343,7 +344,7 @@ export default function DietInsightsPage() {
         const comboResult = processComboIngredientUsage(
           dietData, 
           globallyFilteredData,
-          globalCounts.totalAnimals, globalCounts.totalSpecies,
+          globalCounts,
           autoDetectedInputDuration, targetDisplayDuration
         );
         setComboIngredientsData(comboResult);
@@ -359,7 +360,7 @@ export default function DietInsightsPage() {
         const choiceResult = processChoiceIngredientUsage(
           dietData, 
           globallyFilteredData,
-          globalCounts.totalAnimals, globalCounts.totalSpecies,
+          globalCounts,
           autoDetectedInputDuration, targetDisplayDuration
         );
         setChoiceIngredientsData(choiceResult);
@@ -502,7 +503,7 @@ export default function DietInsightsPage() {
       alert("No ingredient types with items to download based on current filters.");
       return;
     }
-    const doc = new jsPDF();
+    const doc = new jsPDF() as jsPDFDocument;
     let currentY = 15;
     const pageHeight = doc.internal.pageSize.getHeight();
     const bottomMargin = 20;
@@ -570,7 +571,7 @@ export default function DietInsightsPage() {
         return row;
       });
 
-      (doc as any).autoTable({
+      doc.autoTable({
         columns: ingredientTableColumns,
         body: ingredientTableRows,
         startY: currentY,
@@ -578,7 +579,7 @@ export default function DietInsightsPage() {
         headStyles: { fillColor: [75, 85, 99] },
         styles: { fontSize: 7, cellPadding: 1 },
       });
-      currentY = (doc as any).lastAutoTable.finalY + 3;
+      currentY = doc.lastAutoTable.finalY + 3;
 
       const summaryTableBody: any[] = [];
       const uomTotalsForFooter: Record<string, Record<string, number>> = {};
@@ -616,7 +617,7 @@ export default function DietInsightsPage() {
           summaryTableColumns.push({header: mt, dataKey: mt});
       });
 
-      (doc as any).autoTable({
+      doc.autoTable({
         columns: summaryTableColumns,
         body: summaryTableBody,
         startY: currentY,
@@ -625,7 +626,7 @@ export default function DietInsightsPage() {
         styles: { fontSize: 7, cellPadding: 1 },
         columnStyles: { metric: { fontStyle: 'bold'}},
       });
-      currentY = (doc as any).lastAutoTable.finalY + 5;
+      currentY = doc.lastAutoTable.finalY + 5;
     });
     doc.save('all_ingredient_totals_report.pdf');
   };
@@ -635,7 +636,7 @@ export default function DietInsightsPage() {
       alert("No ingredient data for this type to download.");
       return;
     }
-    const doc = new jsPDF();
+    const doc = new jsPDF() as jsPDFDocument;
     let currentY = 15;
     doc.setFontSize(16);
     let groupTitle = typeGroup.ingredient_type_name;
@@ -687,7 +688,7 @@ export default function DietInsightsPage() {
       return row;
     });
 
-    (doc as any).autoTable({
+    doc.autoTable({
       columns: ingredientTableColumns,
       body: ingredientTableRows,
       startY: currentY,
@@ -695,7 +696,7 @@ export default function DietInsightsPage() {
       headStyles: { fillColor: [75, 85, 99] },
       styles: { fontSize: 7, cellPadding: 1 },
     });
-    currentY = (doc as any).lastAutoTable.finalY + 3;
+    currentY = doc.lastAutoTable.finalY + 3;
 
     const summaryTableBody: any[] = [];
     const uomTotalsForFooter: Record<string, Record<string, number>> = {};
@@ -733,7 +734,7 @@ export default function DietInsightsPage() {
         summaryTableColumns.push({header: mt, dataKey: mt});
     });
 
-    (doc as any).autoTable({
+    doc.autoTable({
       columns: summaryTableColumns,
       body: summaryTableBody,
       startY: currentY,
@@ -753,7 +754,7 @@ export default function DietInsightsPage() {
       return;
     }
 
-    const doc = new jsPDF();
+    const doc = new jsPDF() as jsPDFDocument;
     let currentY = 15; 
     const pageHeight = doc.internal.pageSize.getHeight();
     const bottomMargin = 20;
@@ -831,7 +832,7 @@ export default function DietInsightsPage() {
         return row;
       });
 
-      (doc as any).autoTable({
+      doc.autoTable({
         columns: ingredientTableColumns,
         body: ingredientTableRows,
         startY: currentY,
@@ -839,7 +840,7 @@ export default function DietInsightsPage() {
         headStyles: { fillColor: [75, 85, 99] }, 
         styles: { fontSize: 7, cellPadding: 1 },
       });
-      currentY = (doc as any).lastAutoTable.finalY + 3;
+      currentY = doc.lastAutoTable.finalY + 3;
       
       const summaryTableBody: any[] = [];
       const uomTotals: Record<string, Record<string, number>> = {};
@@ -879,7 +880,7 @@ export default function DietInsightsPage() {
           summaryTableColumns.push({header: mt, dataKey: mt});
       });
 
-      (doc as any).autoTable({
+      doc.autoTable({
         columns: summaryTableColumns,
         body: summaryTableBody,
         startY: currentY,
@@ -888,7 +889,7 @@ export default function DietInsightsPage() {
         styles: { fontSize: 7, cellPadding: 1 },
         columnStyles: { metric: { fontStyle: 'bold'}},
       });
-      currentY = (doc as any).lastAutoTable.finalY + 5;
+      currentY = doc.lastAutoTable.finalY + 5;
     });
 
     doc.save('all_recipes_report.pdf');
@@ -900,7 +901,7 @@ export default function DietInsightsPage() {
       return;
     }
 
-    const doc = new jsPDF();
+    const doc = new jsPDF() as jsPDFDocument;
     let currentY = 15;
 
     doc.setFontSize(16);
@@ -959,7 +960,7 @@ export default function DietInsightsPage() {
         return row;
     });
 
-    (doc as any).autoTable({
+    doc.autoTable({
         columns: ingredientTableColumns,
         body: ingredientTableRows,
         startY: currentY,
@@ -967,7 +968,7 @@ export default function DietInsightsPage() {
         headStyles: { fillColor: [75, 85, 99] },
         styles: { fontSize: 7, cellPadding: 1 },
     });
-    currentY = (doc as any).lastAutoTable.finalY + 3;
+    currentY = doc.lastAutoTable.finalY + 3;
 
     const summaryTableBody: any[] = [];
     const uomTotals: Record<string, Record<string, number>> = {};
@@ -1005,7 +1006,7 @@ export default function DietInsightsPage() {
         summaryTableColumns.push({header: mt, dataKey: mt});
     });
 
-    (doc as any).autoTable({
+    doc.autoTable({
         columns: summaryTableColumns,
         body: summaryTableBody,
         startY: currentY,
@@ -1024,7 +1025,7 @@ export default function DietInsightsPage() {
       alert("No combo ingredients with items to download based on current filters.");
       return;
     }
-    const doc = new jsPDF();
+    const doc = new jsPDF() as jsPDFDocument;
     let currentY = 15;
     const pageHeight = doc.internal.pageSize.getHeight();
     const bottomMargin = 20;
@@ -1092,7 +1093,7 @@ export default function DietInsightsPage() {
         return row;
       });
 
-      (doc as any).autoTable({
+      doc.autoTable({
         columns: ingredientTableColumns,
         body: ingredientTableRows,
         startY: currentY,
@@ -1100,7 +1101,7 @@ export default function DietInsightsPage() {
         headStyles: { fillColor: [75, 85, 99] },
         styles: { fontSize: 7, cellPadding: 1 },
       });
-      currentY = (doc as any).lastAutoTable.finalY + 3;
+      currentY = doc.lastAutoTable.finalY + 3;
 
       const summaryTableBody: any[] = [];
       const uomTotalsForFooter: Record<string, Record<string, number>> = {};
@@ -1134,9 +1135,7 @@ export default function DietInsightsPage() {
       summaryTableBody.push(speciesRow);
 
       const enclosureRow: any = { metric: "# of Enclosures" };
-      group.group_specific_meal_times.forEach(mt => {
-        enclosureRow[mt] = (group.enclosures_per_meal_time[mt] || []).length.toString();
-      });
+      group.group_specific_meal_times.forEach(mt => { enclosureRow[mt] = (group.enclosures_per_meal_time[mt] || []).length.toString(); });
       summaryTableBody.push(enclosureRow);
 
       const summaryTableColumns = [{ header: "Time Slot", dataKey: "metric" }];
@@ -1144,7 +1143,7 @@ export default function DietInsightsPage() {
           summaryTableColumns.push({header: mt, dataKey: mt});
       });
 
-      (doc as any).autoTable({
+      doc.autoTable({
         columns: summaryTableColumns,
         body: summaryTableBody,
         startY: currentY,
@@ -1153,7 +1152,7 @@ export default function DietInsightsPage() {
         styles: { fontSize: 7, cellPadding: 1 },
         columnStyles: { metric: { fontStyle: 'bold'}},
       });
-      currentY = (doc as any).lastAutoTable.finalY + 5;
+      currentY = doc.lastAutoTable.finalY + 5;
     });
     doc.save('all_combo_ingredients_report.pdf');
   };
@@ -1163,7 +1162,7 @@ export default function DietInsightsPage() {
       alert("No ingredient data for this combo group to download.");
       return;
     }
-    const doc = new jsPDF();
+    const doc = new jsPDF() as jsPDFDocument;
     let currentY = 15;
 
     doc.setFontSize(16);
@@ -1213,7 +1212,7 @@ export default function DietInsightsPage() {
         return row;
     });
 
-    (doc as any).autoTable({
+    doc.autoTable({
         columns: ingredientTableColumns,
         body: ingredientTableRows,
         startY: currentY,
@@ -1221,7 +1220,7 @@ export default function DietInsightsPage() {
         headStyles: { fillColor: [75, 85, 99] },
         styles: { fontSize: 7, cellPadding: 1 },
     });
-    currentY = (doc as any).lastAutoTable.finalY + 3;
+    currentY = doc.lastAutoTable.finalY + 3;
 
     const summaryTableBody: any[] = [];
     const uomTotalsForFooter: Record<string, Record<string, number>> = {};
@@ -1259,7 +1258,7 @@ export default function DietInsightsPage() {
         summaryTableColumns.push({header: mt, dataKey: mt});
     });
 
-    (doc as any).autoTable({
+    doc.autoTable({
         columns: summaryTableColumns,
         body: summaryTableBody,
         startY: currentY,
@@ -1278,7 +1277,7 @@ export default function DietInsightsPage() {
       return;
     }
 
-    const doc = new jsPDF();
+    const doc = new jsPDF() as jsPDFDocument;
     let currentY = 15;
     const pageHeight = doc.internal.pageSize.getHeight();
     const bottomMargin = 20;
@@ -1343,7 +1342,7 @@ export default function DietInsightsPage() {
           return row;
       });
 
-      (doc as any).autoTable({
+      doc.autoTable({
           columns: ingredientTableColumns,
           body: ingredientTableRows,
           startY: currentY,
@@ -1351,7 +1350,7 @@ export default function DietInsightsPage() {
           headStyles: { fillColor: [75, 85, 99] },
           styles: { fontSize: 7, cellPadding: 1 },
       });
-      currentY = (doc as any).lastAutoTable.finalY + 3;
+      currentY = doc.lastAutoTable.finalY + 3;
 
       const summaryTableBody: any[] = [];
       const uomTotalsForFooter: Record<string, Record<string, number>> = {};
@@ -1389,7 +1388,7 @@ export default function DietInsightsPage() {
           summaryTableColumns.push({header: mt, dataKey: mt});
       });
 
-      (doc as any).autoTable({
+      doc.autoTable({
           columns: summaryTableColumns,
           body: summaryTableBody,
           startY: currentY,
@@ -1398,14 +1397,14 @@ export default function DietInsightsPage() {
           styles: { fontSize: 7, cellPadding: 1 },
           columnStyles: { metric: { fontStyle: 'bold'}},
       });
-      currentY = (doc as any).lastAutoTable.finalY + 5;
+      currentY = doc.lastAutoTable.finalY + 5;
     });
     doc.save('all_choice_ingredients_report.pdf');
   };
 
   const handleSingleChoicePdfDownload = (group: GroupedChoiceIngredient) => {
     if (!group || group.ingredients.length === 0) return alert("No ingredient data for this choice group to download.");
-    const doc = new jsPDF();
+    const doc = new jsPDF() as jsPDFDocument;
     let currentY = 15;
     doc.setFontSize(16);
     let groupTitle = group.choice_group_name;
@@ -1454,7 +1453,7 @@ export default function DietInsightsPage() {
         return row;
     });
 
-    (doc as any).autoTable({
+    doc.autoTable({
         columns: ingredientTableColumns,
         body: ingredientTableRows,
         startY: currentY,
@@ -1462,7 +1461,7 @@ export default function DietInsightsPage() {
         headStyles: { fillColor: [75, 85, 99] },
         styles: { fontSize: 7, cellPadding: 1 },
     });
-    currentY = (doc as any).lastAutoTable.finalY + 3;
+    currentY = doc.lastAutoTable.finalY + 3;
 
     const summaryTableBody: any[] = [];
     const uomTotalsForFooter: Record<string, Record<string, number>> = {};
@@ -1500,7 +1499,7 @@ export default function DietInsightsPage() {
         summaryTableColumns.push({header: mt, dataKey: mt});
     });
 
-    (doc as any).autoTable({
+    doc.autoTable({
         columns: summaryTableColumns,
         body: summaryTableBody,
         startY: currentY,
@@ -1512,6 +1511,93 @@ export default function DietInsightsPage() {
 
     doc.save(`ChoiceGroup_${group.choice_group_name.replace(/\s+/g, '_')}_${targetDisplayDuration}Days.pdf`);
   };
+
+
+   const handleSummaryPdfDownload = () => {
+    if (!showSummary || !dietData) {
+      alert("Please generate the summary first or upload data.");
+      return;
+    }
+
+    const doc = new jsPDF() as jsPDFDocument;
+    let currentY = 15;
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const bottomMargin = 20;
+
+    doc.setFontSize(16);
+    doc.text("Diet Plan Summary Report", 14, currentY);
+    currentY += 10;
+
+    // Helper function to add a section to PDF
+    const addSectionToPdf = (title: string, data: any[], columns: ColumnDefinition<any>[], totalCount?: number) => {
+      if (currentY + 40 > pageHeight - bottomMargin) { // Check if space for header and some table
+        doc.addPage();
+        currentY = 15;
+      }
+      doc.setFontSize(12);
+      doc.text(title, 14, currentY);
+      currentY += 6;
+      if (totalCount !== undefined) {
+        doc.setFontSize(10);
+        doc.text(`Total Count: ${totalCount}`, 14, currentY);
+        currentY += 6;
+      }
+
+      if (data && data.length > 0) {
+        const tableBody = data.map(row =>
+          columns.map(col => {
+            const val = col.cell ? col.cell(row) : (row as any)[col.key];
+            return String(val !== undefined ? val : '');
+          })
+        );
+        doc.autoTable({
+          head: [columns.map(col => col.header)],
+          body: tableBody,
+          startY: currentY,
+          theme: 'striped',
+          headStyles: { fillColor: [75, 85, 99] },
+          styles: { fontSize: 8, cellPadding: 1.5 },
+          didDrawPage: (hookData) => {
+            currentY = hookData.cursor?.y ? hookData.cursor.y + 5 : 20;
+          }
+        });
+        currentY = doc.lastAutoTable.finalY + 10; // Add some padding after table
+      } else {
+        doc.setFontSize(10);
+        doc.text("No data available for this section.", 14, currentY);
+        currentY += 10;
+      }
+    };
+
+    // Ingredients Summary
+    const flatIngredients = flattenedIngredientsSummaryData;
+    addSectionToPdf("Ingredients Summary", flatIngredients, summaryIngredientsColumns, flatIngredients.length);
+
+    // Recipes Summary
+    if (recipesData?.data) {
+        addSectionToPdf("Recipes Summary", recipesData.data, summaryRecipesColumns, recipesData.data.length);
+    } else {
+        addSectionToPdf("Recipes Summary", [], summaryRecipesColumns, 0);
+    }
+    
+    // Combo Ingredients Summary
+    if (comboIngredientsData?.data) {
+        addSectionToPdf("Combo Ingredients Summary", comboIngredientsData.data, summaryCombosColumns, comboIngredientsData.data.length);
+    } else {
+        addSectionToPdf("Combo Ingredients Summary", [], summaryCombosColumns, 0);
+    }
+
+    // Choice Ingredients Summary
+    if (choiceIngredientsData?.data) {
+        addSectionToPdf("Choice Ingredients Summary", choiceIngredientsData.data, summaryChoicesColumns, choiceIngredientsData.data.length);
+    } else {
+        addSectionToPdf("Choice Ingredients Summary", [], summaryChoicesColumns, 0);
+    }
+
+    doc.save('diet_summary_report.pdf');
+  };
+
+
 
   const renderMultiSelectFilter = (
     label: string,
@@ -1669,18 +1755,18 @@ export default function DietInsightsPage() {
   );
 
   // For Summary Tab - Table Definitions
-  const summaryIngredientsColumns: ColumnDefinition<any>[] = [
+  const summaryIngredientsColumns: ColumnDefinition<any>[] = useMemo(() => [
     { key: 'ingredient_type_name', header: 'Ingredient Type' },
     { key: 'ingredient_name', header: 'Ingredient Name' },
     { key: 'preparation_type_name', header: 'Preparation Type' },
     { key: 'cut_size_name', header: 'Cut Size' },
     { 
-      key: 'total_qty_for_target_duration', 
+      key: 'total_qty_for_target_duration_across_meal_times', 
       header: `Total Qty for ${targetDisplayDuration} Day(s)`,
-      cell: (item) => item.total_qty_for_target_duration.toFixed(2)
+      cell: (item) => item.total_qty_for_target_duration_across_meal_times.toFixed(2)
     },
     { key: 'base_uom_name', header: 'Base UOM' },
-  ];
+  ], [targetDisplayDuration]);
 
   const summaryRecipesColumns: ColumnDefinition<GroupedRecipe>[] = [
     { key: 'recipe_name', header: 'Recipe Name' },
@@ -1731,13 +1817,14 @@ export default function DietInsightsPage() {
     if (!overallIngredientsData?.data) return [];
     return overallIngredientsData.data.flatMap(typeGroup => 
       typeGroup.ingredients.map(ing => {
-        const totalQty = Object.values(ing.quantities_by_meal_time).reduce((sum, qty) => sum + qty, 0);
+        const totalQtyAcrossMeals = Object.values(ing.quantities_by_meal_time)
+                                         .reduce((sum, qty) => sum + qty, 0);
         return {
           ingredient_type_name: typeGroup.ingredient_type_name,
           ingredient_name: ing.ingredient_name,
           preparation_type_name: ing.preparation_type_name || 'N/A',
           cut_size_name: ing.cut_size_name || 'N/A',
-          total_qty_for_target_duration: totalQty,
+          total_qty_for_target_duration_across_meal_times: totalQtyAcrossMeals,
           base_uom_name: ing.base_uom_name
         };
       })
@@ -1749,7 +1836,7 @@ export default function DietInsightsPage() {
     <div className="min-h-screen bg-background text-foreground">
       <main className="container mx-auto p-4 md:p-8 space-y-8">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 md:grid-cols-6 mb-6">
+          <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 md:grid-cols-6 lg:grid-cols-7 mb-6">
             <TabsTrigger value="upload">Upload Excel</TabsTrigger>
             <TabsTrigger value="raw-materials" disabled={!dietData}>Raw Materials Required</TabsTrigger>
             <TabsTrigger value="ingredient-totals" disabled={!dietData}>Ingredient Totals</TabsTrigger>
@@ -2571,13 +2658,23 @@ export default function DietInsightsPage() {
             </SectionCard>
           </TabsContent>
 
-          
           <TabsContent value="summary" className="space-y-6">
+            {renderFilterAndSummaryCards(overallIngredientsData, isProcessingOverall || isProcessingDetailedRaw || isProcessingRecipes || isProcessingCombo || isProcessingChoice)}
             <Card className="shadow-md">
-              <CardHeader>
-                <CardTitle className="flex items-center text-xl text-primary">
-                  <BarChart3 className="mr-2 h-5 w-5" /> Summary
-                </CardTitle>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div className="flex items-center">
+                  <BarChart3 className="mr-2 h-5 w-5 text-primary" />
+                  <CardTitle className="text-xl text-primary">Summary</CardTitle>
+                </div>
+                <Button
+                    onClick={handleSummaryPdfDownload}
+                    variant="outline"
+                    size="sm"
+                    disabled={!showSummary || !dietData || isLoading || isProcessingOverall || isProcessingDetailedRaw || isProcessingRecipes || isProcessingCombo || isProcessingChoice}
+                    aria-label="Download Summary PDF"
+                >
+                    <Download className="mr-2 h-4 w-4" /> PDF
+                </Button>
               </CardHeader>
               <CardContent>
                 {!dietData ? (
