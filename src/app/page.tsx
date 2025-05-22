@@ -36,11 +36,20 @@ import {
   applyGlobalFilters, getGlobalCounts, getDynamicUniqueFilterOptions
 } from '@/lib/excelParser';
 import { Leaf, Utensils, Filter, Loader2, ChevronsUpDown, Download, Info, FileSpreadsheet, BarChart3 } from 'lucide-react';
+// import { Sparkles } from 'lucide-react'; // For AI Summary
 import { format } from 'date-fns';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import type { jsPDFDocument } from 'jspdf-autotable';
 import { DataTable } from '@/components/DataTable';
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from '@/components/ui/table';
 
 
 const dayOptionsConfig = [
@@ -246,7 +255,7 @@ export default function DietInsightsPage() {
       const currentDayOptions = getDayOptions(detectedInputDuration);
       let newTargetDuration = targetDisplayDuration; 
 
-      if (detectedInputDuration === 7 && !currentDayOptions.some(opt => opt.value === newTargetDuration)) {
+      if (detectedInputDuration === 7 && (newTargetDuration === 1 || !currentDayOptions.some(opt => opt.value === newTargetDuration))) {
          newTargetDuration = 7; 
       } else if (detectedInputDuration === 1 && newTargetDuration > 1) {
         newTargetDuration = 1;
@@ -1129,9 +1138,7 @@ export default function DietInsightsPage() {
       summaryTableBody.push(animalRow);
 
       const speciesRow: any = { metric: "# of Species" };
-      group.group_specific_meal_times.forEach(mt => {
-        speciesRow[mt] = (group.species_details_per_meal_time[mt] || []).length.toString();
-      });
+      group.group_specific_meal_times.forEach(mt => { speciesRow[mt] = (group.species_details_per_meal_time[mt] || []).length.toString(); });
       summaryTableBody.push(speciesRow);
 
       const enclosureRow: any = { metric: "# of Enclosures" };
@@ -1529,7 +1536,7 @@ export default function DietInsightsPage() {
     currentY += 10;
 
     // Helper function to add a section to PDF
-    const addSectionToPdf = (title: string, data: any[], columns: ColumnDefinition<any>[], totalCount?: number) => {
+    const addSectionToPdf = (title: string, data: any[], columns: ColumnDefinition<any>[], totalCount?: number, customFooter?: () => void) => {
       if (currentY + 40 > pageHeight - bottomMargin) { // Check if space for header and some table
         doc.addPage();
         currentY = 15;
@@ -1561,7 +1568,12 @@ export default function DietInsightsPage() {
             currentY = hookData.cursor?.y ? hookData.cursor.y + 5 : 20;
           }
         });
-        currentY = doc.lastAutoTable.finalY + 10; // Add some padding after table
+        currentY = doc.lastAutoTable.finalY; // Use finalY directly for next content
+        if (customFooter) {
+            customFooter(); // Allows drawing custom footers after the table
+        }
+        currentY += 10; // Add some padding after table and footer
+
       } else {
         doc.setFontSize(10);
         doc.text("No data available for this section.", 14, currentY);
@@ -1571,7 +1583,44 @@ export default function DietInsightsPage() {
 
     // Ingredients Summary
     const flatIngredients = flattenedIngredientsSummaryData;
-    addSectionToPdf("Ingredients Summary", flatIngredients, summaryIngredientsColumns, flatIngredients.length);
+    const ingredientsSummaryTotalsByUOM: Record<string, number> = {};
+    flatIngredients.forEach(ing => {
+        ingredientsSummaryTotalsByUOM[ing.base_uom_name] = (ingredientsSummaryTotalsByUOM[ing.base_uom_name] || 0) + ing.total_qty_for_target_duration_across_meal_times;
+    });
+
+    addSectionToPdf("Ingredients Summary", flatIngredients, summaryIngredientsColumns, flatIngredients.length, () => {
+        const footerRows = Object.entries(ingredientsSummaryTotalsByUOM).map(([uom, total]) => {
+            const row: any = {};
+            columnsForIngredientsSummary.forEach((col, index) => {
+                if (index === 0) row[col.key] = `Total Qty Required (${uom}):`;
+                else if (col.key === 'total_qty_for_target_duration_across_meal_times' && uom === col.key.toString().split('(').pop()?.split(')')[0]) { // This condition might need refinement if UOM is not in key
+                  // This logic is tricky as the column key needs to match the UOM context, or we dedicate the last 'qty' column
+                } else if (index === columnsForIngredientsSummary.findIndex(c => c.key === 'total_qty_for_target_duration_across_meal_times') && uom === ingredientsSummaryTotalsByUOM[uom]) {
+                    row[col.key] = total.toFixed(4);
+                }
+                else {
+                     row[col.key] = '';
+                }
+            });
+            // A simplified approach for PDF footer, assuming the quantity column is the second to last.
+            const simplifiedRow: any[] = new Array(columnsForIngredientsSummary.length).fill('');
+            simplifiedRow[0] = `Total Qty Required (${uom}):`;
+            simplifiedRow[columnsForIngredientsSummary.findIndex(c => c.key === 'total_qty_for_target_duration_across_meal_times')] = total.toFixed(4);
+            return simplifiedRow;
+        });
+
+        if (footerRows.length > 0) {
+            doc.autoTable({
+                body: footerRows,
+                startY: doc.lastAutoTable.finalY,
+                theme: 'grid',
+                styles: { fontSize: 7, fontStyle: 'bold', cellPadding: 1.5 },
+                columnStyles: { 0: { cellWidth: columnsForIngredientsSummary[0].header.length * 3 } } // Approximate width
+            });
+            currentY = doc.lastAutoTable.finalY;
+        }
+    });
+
 
     // Recipes Summary
     if (recipesData?.data) {
@@ -1673,11 +1722,11 @@ export default function DietInsightsPage() {
               "Site Name", uniqueSiteNames, selectedSiteNames, setSelectedSiteNames,
               "All Sites", "site-filter", !dietData || isLoading || isProcessingOverall || isProcessingDetailedRaw || isProcessingRecipes || isProcessingCombo || isProcessingChoice || isTabProcessing
             )}
-            {renderMultiSelectFilter(
+             {renderMultiSelectFilter(
               "Section Name", uniqueSectionNames, selectedSectionNames, setSelectedSectionNames,
               "All Sections", "section-filter", !dietData || isLoading || isProcessingOverall || isProcessingDetailedRaw || isProcessingRecipes || isProcessingCombo || isProcessingChoice || isTabProcessing
             )}
-            {renderMultiSelectFilter(
+             {renderMultiSelectFilter(
               "Enclosure Name", uniqueEnclosureNames, selectedEnclosureNames, setSelectedEnclosureNames,
               "All Enclosures", "enclosure-filter", !dietData || isLoading || isProcessingOverall || isProcessingDetailedRaw || isProcessingRecipes || isProcessingCombo || isProcessingChoice || isTabProcessing
             )}
@@ -1754,8 +1803,7 @@ export default function DietInsightsPage() {
     </>
   );
 
-  // For Summary Tab - Table Definitions
-  const summaryIngredientsColumns: ColumnDefinition<any>[] = useMemo(() => [
+  const columnsForIngredientsSummary: ColumnDefinition<ReturnType<typeof flattenedIngredientsSummaryData>[0]>[] = useMemo(() => [
     { key: 'ingredient_type_name', header: 'Ingredient Type' },
     { key: 'ingredient_name', header: 'Ingredient Name' },
     { key: 'preparation_type_name', header: 'Preparation Type' },
@@ -1830,6 +1878,14 @@ export default function DietInsightsPage() {
       })
     );
   }, [overallIngredientsData, targetDisplayDuration]);
+
+  const ingredientsSummaryTotalsByUOM = useMemo(() => {
+    const totals: Record<string, number> = {};
+    flattenedIngredientsSummaryData.forEach(ing => {
+        totals[ing.base_uom_name] = (totals[ing.base_uom_name] || 0) + ing.total_qty_for_target_duration_across_meal_times;
+    });
+    return totals;
+  }, [flattenedIngredientsSummaryData]);
 
 
   return (
@@ -1935,7 +1991,7 @@ export default function DietInsightsPage() {
                                 <div>
                                   Total for {targetDisplayDuration} Day{targetDisplayDuration > 1 ? 's' : ''}: {Object.entries(typeGroup.total_quantities_for_target_duration).map(([uom, qty]) => `${qty.toFixed(2)} ${uom}`).join(', ') || 'N/A'}
                                 </div>
-                                <div className="flex flex-row flex-wrap items-baseline">
+                                 <div className="flex flex-row flex-wrap items-baseline">
                                   <span className="font-semibold whitespace-nowrap mr-1">Consuming Species:</span>
                                   <Button
                                       variant="link"
@@ -1990,76 +2046,76 @@ export default function DietInsightsPage() {
                       </CardHeader>
                       <CardContent className="p-0">
                          <div className="overflow-x-auto rounded-md border">
-                            <table className="w-full text-sm">
-                                <thead className="bg-muted/50">
-                                    <tr>
-                                        <th className="p-2 text-left font-semibold text-muted-foreground whitespace-nowrap">Ingredients Name</th>
-                                        <th className="p-2 text-left font-semibold text-muted-foreground whitespace-nowrap">Preparation Types</th>
-                                        <th className="p-2 text-left font-semibold text-muted-foreground whitespace-nowrap">Cut Sizes</th>
-                                        <th className="p-2 text-left font-semibold text-muted-foreground whitespace-nowrap">Base UOM</th>
+                            <Table>
+                                <TableHeader className="bg-muted/50">
+                                    <TableRow>
+                                        <TableHead className="font-semibold text-muted-foreground whitespace-nowrap">Ingredients Name</TableHead>
+                                        <TableHead className="font-semibold text-muted-foreground whitespace-nowrap">Preparation Types</TableHead>
+                                        <TableHead className="font-semibold text-muted-foreground whitespace-nowrap">Cut Sizes</TableHead>
+                                        <TableHead className="font-semibold text-muted-foreground whitespace-nowrap">Base UOM</TableHead>
                                         {typeGroup.group_specific_meal_times.map(mealTime => (
-                                            <th key={mealTime} className="p-2 text-left font-semibold text-muted-foreground whitespace-nowrap">{mealTime}</th>
+                                            <TableHead key={mealTime} className="font-semibold text-muted-foreground whitespace-nowrap">{mealTime}</TableHead>
                                         ))}
-                                    </tr>
-                                </thead>
-                                <tbody>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
                                     {typeGroup.ingredients.map((ingredient, ingIndex) => (
-                                        <tr key={ingIndex} className="border-b last:border-b-0 hover:bg-muted/20">
-                                            <td className="p-2 align-top whitespace-nowrap">{ingredient.ingredient_name}</td>
-                                            <td className="p-2 align-top whitespace-nowrap">{ingredient.preparation_type_name || 'N/A'}</td>
-                                            <td className="p-2 align-top whitespace-nowrap">{ingredient.cut_size_name || 'N/A'}</td>
-                                            <td className="p-2 align-top whitespace-nowrap">{ingredient.base_uom_name}</td>
+                                        <TableRow key={ingIndex} className="border-b last:border-b-0 hover:bg-muted/20">
+                                            <TableCell className="align-top whitespace-nowrap">{ingredient.ingredient_name}</TableCell>
+                                            <TableCell className="align-top whitespace-nowrap">{ingredient.preparation_type_name || 'N/A'}</TableCell>
+                                            <TableCell className="align-top whitespace-nowrap">{ingredient.cut_size_name || 'N/A'}</TableCell>
+                                            <TableCell className="align-top whitespace-nowrap">{ingredient.base_uom_name}</TableCell>
                                             {typeGroup.group_specific_meal_times.map(mealTime => (
-                                                <td key={`${mealTime}-${ingIndex}`} className="p-2 align-top whitespace-nowrap">
+                                                <TableCell key={`${mealTime}-${ingIndex}`} className="align-top whitespace-nowrap">
                                                     {ingredient.quantities_by_meal_time[mealTime]?.toFixed(2) === '0.00' ? '' : ingredient.quantities_by_meal_time[mealTime]?.toFixed(2) || ''}
-                                                </td>
+                                                </TableCell>
                                             ))}
-                                        </tr>
+                                        </TableRow>
                                     ))}
-                                </tbody>
+                                </TableBody>
                                  <tfoot className="bg-muted/50 font-semibold">
                                     {allUOMsInGroup.map(uom => (
-                                        <tr key={`total-uom-${itemKey}-${uom}`}>
-                                            <td className="p-2 text-right font-medium text-muted-foreground whitespace-nowrap" colSpan={4}>Total Qty Required ({uom}):</td>
+                                        <TableRow key={`total-uom-${itemKey}-${uom}`}>
+                                            <TableCell className="text-right font-medium text-muted-foreground whitespace-nowrap" colSpan={4}>Total Qty Required ({uom}):</TableCell>
                                             {typeGroup.group_specific_meal_times.map(mealTime => (
-                                                <td key={`total-${mealTime}-${uom}`} className="p-2 text-left whitespace-nowrap">
+                                                <TableCell key={`total-${mealTime}-${uom}`} className="text-left whitespace-nowrap">
                                                     {totalsByMealTimeAndUOM[mealTime]?.[uom]?.toFixed(2) === '0.00' ? '' : totalsByMealTimeAndUOM[mealTime]?.[uom]?.toFixed(2) || ''}
-                                                </td>
+                                                </TableCell>
                                             ))}
-                                        </tr>
+                                        </TableRow>
                                     ))}
-                                    <tr>
-                                        <td className="p-2 font-medium text-muted-foreground whitespace-nowrap text-right" colSpan={4}># of Animals</td>
+                                    <TableRow>
+                                        <TableCell className="font-medium text-muted-foreground whitespace-nowrap text-right" colSpan={4}># of Animals</TableCell>
                                         {typeGroup.group_specific_meal_times.map(mealTime => (
-                                            <td key={`animals-${mealTime}`} className="p-2 text-left whitespace-nowrap">
+                                            <TableCell key={`animals-${mealTime}`} className="text-left whitespace-nowrap">
                                                 <Button variant="link" className="p-0 h-auto text-sm text-primary font-bold" onClick={() => openAnimalListModal(`${typeGroup.ingredient_type_name} - ${mealTime} - Animals`, typeGroup.animals_per_meal_time[mealTime] || [])} disabled={(typeGroup.animals_per_meal_time[mealTime] || []).length === 0}>
                                                     {(typeGroup.animals_per_meal_time[mealTime] || []).length}
                                                 </Button>
-                                            </td>
+                                            </TableCell>
                                         ))}
-                                    </tr>
-                                    <tr>
-                                        <td className="p-2 font-medium text-muted-foreground whitespace-nowrap text-right" colSpan={4}># of Species</td>
+                                    </TableRow>
+                                    <TableRow>
+                                        <TableCell className="font-medium text-muted-foreground whitespace-nowrap text-right" colSpan={4}># of Species</TableCell>
                                         {typeGroup.group_specific_meal_times.map(mealTime => (
-                                            <td key={`species-${mealTime}`} className="p-2 text-left whitespace-nowrap">
+                                            <TableCell key={`species-${mealTime}`} className="text-left whitespace-nowrap">
                                                 <Button variant="link" className="p-0 h-auto text-sm text-primary font-bold" onClick={() => openSpeciesListModal(`${typeGroup.ingredient_type_name} - ${mealTime} - Species`, typeGroup.species_details_per_meal_time[mealTime] || [])} disabled={(typeGroup.species_details_per_meal_time[mealTime] || []).length === 0}>
                                                     {(typeGroup.species_details_per_meal_time[mealTime] || []).length}
                                                 </Button>
-                                            </td>
+                                            </TableCell>
                                         ))}
-                                    </tr>
-                                    <tr>
-                                        <td className="p-2 font-medium text-muted-foreground whitespace-nowrap text-right" colSpan={4}># of Enclosures</td>
+                                    </TableRow>
+                                    <TableRow>
+                                        <TableCell className="font-medium text-muted-foreground whitespace-nowrap text-right" colSpan={4}># of Enclosures</TableCell>
                                         {typeGroup.group_specific_meal_times.map(mealTime => (
-                                            <td key={`enclosures-${mealTime}`} className="p-2 text-left whitespace-nowrap">
+                                            <TableCell key={`enclosures-${mealTime}`} className="text-left whitespace-nowrap">
                                                 <Button variant="link" className="p-0 h-auto text-sm text-primary font-bold" onClick={() => openEnclosureListModal(`${typeGroup.ingredient_type_name} - ${mealTime} - Enclosures`, typeGroup.enclosures_per_meal_time[mealTime] || [])} disabled={(typeGroup.enclosures_per_meal_time[mealTime] || []).length === 0}>
                                                     {(typeGroup.enclosures_per_meal_time[mealTime] || []).length}
                                                 </Button>
-                                            </td>
+                                            </TableCell>
                                         ))}
-                                    </tr>
+                                    </TableRow>
                                 </tfoot>
-                            </table>
+                            </Table>
                         </div>
                          {typeGroup.ingredients.length === 0 && <p className="text-muted-foreground p-4 text-center">No ingredients for this type.</p>}
                       </CardContent>
@@ -2186,76 +2242,70 @@ export default function DietInsightsPage() {
                       </CardHeader>
                       <CardContent className="p-0">
                          <div className="overflow-x-auto rounded-md border">
-                            <table className="w-full text-sm">
-                                <thead className="bg-muted/50">
-                                    <tr>
-                                        <th className="p-2 text-left font-semibold text-muted-foreground whitespace-nowrap">Ingredients Name</th>
-                                        <th className="p-2 text-left font-semibold text-muted-foreground whitespace-nowrap">Preparation Types</th>
-                                        <th className="p-2 text-left font-semibold text-muted-foreground whitespace-nowrap">Cut Sizes</th>
-                                        <th className="p-2 text-left font-semibold text-muted-foreground whitespace-nowrap">Base UOM</th>
+                           <Table>
+                                <TableHeader className="bg-muted/50">
+                                    <TableRow>
+                                        <TableHead className="font-semibold text-muted-foreground whitespace-nowrap">Ingredients Name</TableHead>
+                                        <TableHead className="font-semibold text-muted-foreground whitespace-nowrap">Preparation Types</TableHead>
+                                        <TableHead className="font-semibold text-muted-foreground whitespace-nowrap">Cut Sizes</TableHead>
+                                        <TableHead className="font-semibold text-muted-foreground whitespace-nowrap">Base UOM</TableHead>
                                         {recipe.group_specific_meal_times.map(mealTime => (
-                                            <th key={mealTime} className="p-2 text-left font-semibold text-muted-foreground whitespace-nowrap">{mealTime}</th>
+                                            <TableHead key={mealTime} className="font-semibold text-muted-foreground whitespace-nowrap">{mealTime}</TableHead>
                                         ))}
-                                    </tr>
-                                </thead>
-                                <tbody>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
                                     {recipe.ingredients.map((ingredient, ingIndex) => (
-                                        <tr key={ingIndex} className="border-b last:border-b-0 hover:bg-muted/20">
-                                            <td className="p-2 align-top whitespace-nowrap">{ingredient.ingredient_name}</td>
-                                            <td className="p-2 align-top whitespace-nowrap">{ingredient.preparation_type_name || 'N/A'}</td>
-                                            <td className="p-2 align-top whitespace-nowrap">{ingredient.cut_size_name || 'N/A'}</td>
-                                            <td className="p-2 align-top whitespace-nowrap">{ingredient.base_uom_name}</td>
+                                        <TableRow key={ingIndex} className="border-b last:border-b-0 hover:bg-muted/20">
+                                            <TableCell className="align-top whitespace-nowrap">{ingredient.ingredient_name}</TableCell>
+                                            <TableCell className="align-top whitespace-nowrap">{ingredient.preparation_type_name || 'N/A'}</TableCell>
+                                            <TableCell className="align-top whitespace-nowrap">{ingredient.cut_size_name || 'N/A'}</TableCell>
+                                            <TableCell className="align-top whitespace-nowrap">{ingredient.base_uom_name}</TableCell>
                                             {recipe.group_specific_meal_times.map(mealTime => (
-                                                <td key={`${mealTime}-${ingIndex}`} className="p-2 align-top whitespace-nowrap">
+                                                <TableCell key={`${mealTime}-${ingIndex}`} className="align-top whitespace-nowrap">
                                                     {ingredient.quantities_by_meal_time[mealTime]?.toFixed(4) === '0.0000' ? '' : ingredient.quantities_by_meal_time[mealTime]?.toFixed(4) || ''}
-                                                </td>
+                                                </TableCell>
                                             ))}
-                                        </tr>
+                                        </TableRow>
                                     ))}
-                                </tbody>
+                                </TableBody>
                                  <tfoot className="bg-muted/50 font-semibold">
                                     {allUOMsInGroup.map(uom => (
-                                        <tr key={`total-uom-${itemKey}-${uom}`}>
-                                            <td className="p-2 text-right font-medium text-muted-foreground whitespace-nowrap" colSpan={4}>Total Qty Required ({uom}):</td>
+                                        <TableRow key={`total-uom-${itemKey}-${uom}`}>
+                                            <TableCell colSpan={4} className="text-right text-muted-foreground">Total Qty Required ({uom}):</TableCell>
                                             {recipe.group_specific_meal_times.map(mealTime => (
-                                                <td key={`total-${mealTime}-${uom}`} className="p-2 text-left whitespace-nowrap">
+                                                <TableCell key={`total-${mealTime}-${uom}`} className="text-left">
                                                     {totalsByMealTimeAndUOM[mealTime]?.[uom]?.toFixed(4) === '0.0000' ? '' : totalsByMealTimeAndUOM[mealTime]?.[uom]?.toFixed(4) || ''}
-                                                </td>
+                                                </TableCell>
                                             ))}
-                                        </tr>
+                                        </TableRow>
                                     ))}
-                                    <tr>
-                                        <td className="p-2 font-medium text-muted-foreground whitespace-nowrap text-right" colSpan={4}># of Animals</td>
+                                    <TableRow>
+                                        <TableCell className="font-medium text-muted-foreground whitespace-nowrap text-right" colSpan={4}># of Animals</TableCell>
                                         {recipe.group_specific_meal_times.map(mealTime => (
-                                            <td key={`animals-${mealTime}`} className="p-2 text-left whitespace-nowrap">
-                                                <Button variant="link" className="p-0 h-auto text-sm text-primary font-bold" onClick={() => openAnimalListModal(`${recipe.recipe_name} - ${mealTime} - Animals`, recipe.animals_per_meal_time[mealTime] || [])} disabled={(recipe.animals_per_meal_time[mealTime] || []).length === 0}>
-                                                    {(recipe.animals_per_meal_time[mealTime] || []).length}
-                                                </Button>
-                                            </td>
+                                            <TableCell key={`animals-${mealTime}`} className="text-left whitespace-nowrap">
+                                                {(recipe.animals_per_meal_time[mealTime] || []).length}
+                                            </TableCell>
                                         ))}
-                                    </tr>
-                                    <tr>
-                                        <td className="p-2 font-medium text-muted-foreground whitespace-nowrap text-right" colSpan={4}># of Species</td>
+                                    </TableRow>
+                                    <TableRow>
+                                        <TableCell className="font-medium text-muted-foreground whitespace-nowrap text-right" colSpan={4}># of Species</TableCell>
                                         {recipe.group_specific_meal_times.map(mealTime => (
-                                            <td key={`species-${mealTime}`} className="p-2 text-left whitespace-nowrap">
-                                                <Button variant="link" className="p-0 h-auto text-sm text-primary font-bold" onClick={() => openSpeciesListModal(`${recipe.recipe_name} - ${mealTime} - Species`, recipe.species_details_per_meal_time[mealTime] || [])} disabled={(recipe.species_details_per_meal_time[mealTime] || []).length === 0}>
-                                                    {(recipe.species_details_per_meal_time[mealTime] || []).length}
-                                                </Button>
-                                            </td>
+                                            <TableCell key={`species-${mealTime}`} className="text-left whitespace-nowrap">
+                                                {(recipe.species_details_per_meal_time[mealTime] || []).length}
+                                            </TableCell>
                                         ))}
-                                    </tr>
-                                    <tr>
-                                        <td className="p-2 font-medium text-muted-foreground whitespace-nowrap text-right" colSpan={4}># of Enclosures</td>
+                                    </TableRow>
+                                    <TableRow>
+                                        <TableCell className="font-medium text-muted-foreground whitespace-nowrap text-right" colSpan={4}># of Enclosures</TableCell>
                                         {recipe.group_specific_meal_times.map(mealTime => (
-                                            <td key={`enclosures-${mealTime}`} className="p-2 text-left whitespace-nowrap">
-                                                <Button variant="link" className="p-0 h-auto text-sm text-primary font-bold" onClick={() => openEnclosureListModal(`${recipe.recipe_name} - ${mealTime} - Enclosures`, recipe.enclosures_per_meal_time[mealTime] || [])} disabled={(recipe.enclosures_per_meal_time[mealTime] || []).length === 0}>
-                                                    {(recipe.enclosures_per_meal_time[mealTime] || []).length}
-                                                </Button>
-                                            </td>
+                                            <TableCell key={`enclosures-${mealTime}`} className="text-left whitespace-nowrap">
+                                                {(recipe.enclosures_per_meal_time[mealTime] || []).length}
+                                            </TableCell>
                                         ))}
-                                    </tr>
+                                    </TableRow>
                                 </tfoot>
-                            </table>
+                            </Table>
                         </div>
                          {recipe.ingredients.length === 0 && <p className="text-muted-foreground p-4 text-center">No ingredients for this recipe.</p>}
                       </CardContent>
@@ -2304,7 +2354,7 @@ export default function DietInsightsPage() {
                             {comboGroup.combo_group_name}{selectedMealTimes.length === 1 ? ` - ${selectedMealTimes[0]}` : ''}
                           </CardTitle>
                            <CardDescription className="text-sm text-foreground space-y-1 mt-1">
-                              <div className="flex flex-row flex-wrap items-baseline">
+                               <div className="flex flex-row flex-wrap items-baseline">
                                 <span className="font-semibold whitespace-nowrap mr-1">Consuming Species:</span>
                                   <Button
                                       variant="link"
@@ -2370,100 +2420,70 @@ export default function DietInsightsPage() {
                       </CardHeader>
                       <CardContent className="p-0">
                          <div className="overflow-x-auto rounded-md border">
-                            <table className="w-full text-sm">
-                                <thead className="bg-muted/50">
-                                    <tr>
-                                        <th className="p-2 text-left font-semibold text-muted-foreground whitespace-nowrap">Ingredients Name</th>
-                                        <th className="p-2 text-left font-semibold text-muted-foreground whitespace-nowrap">Preparation Types</th>
-                                        <th className="p-2 text-left font-semibold text-muted-foreground whitespace-nowrap">Cut Sizes</th>
-                                        <th className="p-2 text-left font-semibold text-muted-foreground whitespace-nowrap">Base UOM</th>
+                            <Table>
+                                <TableHeader className="bg-muted/50">
+                                    <TableRow>
+                                        <TableHead className="font-semibold text-muted-foreground whitespace-nowrap">Ingredients Name</TableHead>
+                                        <TableHead className="font-semibold text-muted-foreground whitespace-nowrap">Preparation Types</TableHead>
+                                        <TableHead className="font-semibold text-muted-foreground whitespace-nowrap">Cut Sizes</TableHead>
+                                        <TableHead className="font-semibold text-muted-foreground whitespace-nowrap">Base UOM</TableHead>
                                         {comboGroup.group_specific_meal_times.map(mealTime => (
-                                            <th key={mealTime} className="p-2 text-left font-semibold text-muted-foreground whitespace-nowrap">{mealTime}</th>
+                                            <TableHead key={mealTime} className="font-semibold text-muted-foreground whitespace-nowrap">{mealTime}</TableHead>
                                         ))}
-                                    </tr>
-                                </thead>
-                                <tbody>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
                                     {comboGroup.ingredients.map((ingredient, ingIndex) => (
-                                        <tr key={ingIndex} className="border-b last:border-b-0 hover:bg-muted/20">
-                                            <td className="p-2 align-top whitespace-nowrap">{ingredient.ingredient_name}</td>
-                                            <td className="p-2 align-top whitespace-nowrap">{ingredient.preparation_type_name || 'N/A'}</td>
-                                            <td className="p-2 align-top whitespace-nowrap">{ingredient.cut_size_name || 'N/A'}</td>
-                                            <td className="p-2 align-top whitespace-nowrap">{ingredient.base_uom_name}</td>
+                                        <TableRow key={ingIndex} className="border-b last:border-b-0 hover:bg-muted/20">
+                                            <TableCell className="align-top whitespace-nowrap">{ingredient.ingredient_name}</TableCell>
+                                            <TableCell className="align-top whitespace-nowrap">{ingredient.preparation_type_name || 'N/A'}</TableCell>
+                                            <TableCell className="align-top whitespace-nowrap">{ingredient.cut_size_name || 'N/A'}</TableCell>
+                                            <TableCell className="align-top whitespace-nowrap">{ingredient.base_uom_name}</TableCell>
                                             {comboGroup.group_specific_meal_times.map(mealTime => (
-                                                <td key={`${mealTime}-${ingIndex}`} className="p-2 align-top whitespace-nowrap">
+                                                <TableCell key={`${mealTime}-${ingIndex}`} className="align-top whitespace-nowrap">
                                                     {ingredient.quantities_by_meal_time[mealTime]?.toFixed(4) === '0.0000' ? '' : ingredient.quantities_by_meal_time[mealTime]?.toFixed(4) || ''}
-                                                </td>
+                                                </TableCell>
                                             ))}
-                                        </tr>
+                                        </TableRow>
                                     ))}
-                                </tbody>
+                                </TableBody>
                                 <tfoot className="bg-muted/50 font-semibold">
                                   {allUOMsInGroup.map(uom => (
-                                    <tr key={`total-uom-${itemKey}-${uom}`}>
-                                        <td className="p-2 text-right font-medium text-muted-foreground whitespace-nowrap" colSpan={4}>Total Qty Required ({uom}):</td>
+                                    <TableRow key={`total-uom-${itemKey}-${uom}`}>
+                                        <TableCell colSpan={4} className="text-right text-muted-foreground">Total Qty Required ({uom}):</TableCell>
                                         {comboGroup.group_specific_meal_times.map(mealTime => (
-                                            <td key={`total-${mealTime}-${uom}`} className="p-2 text-left whitespace-nowrap">
+                                            <TableCell key={`total-${mealTime}-${uom}`} className="text-left">
                                                  {totalsByMealTimeAndUOM[mealTime]?.[uom]?.toFixed(4) === '0.0000' ? '' : totalsByMealTimeAndUOM[mealTime]?.[uom]?.toFixed(4) || ''}
-                                            </td>
+                                            </TableCell>
                                         ))}
-                                    </tr>
+                                    </TableRow>
                                   ))}
-                                     <tr>
-                                        <td className="p-2 font-medium text-muted-foreground whitespace-nowrap text-right" colSpan={4}># of Animals</td>
+                                     <TableRow>
+                                        <TableCell className="font-medium text-muted-foreground whitespace-nowrap text-right" colSpan={4}># of Animals</TableCell>
                                         {comboGroup.group_specific_meal_times.map(mealTime => (
-                                            <td key={`animals-${mealTime}`} className="p-2 text-left whitespace-nowrap">
-                                                <Button
-                                                    variant="link"
-                                                    className="p-0 h-auto text-sm text-primary font-bold"
-                                                    onClick={() => openAnimalListModal(
-                                                        `${comboGroup.combo_group_name} - ${mealTime} - Animals`,
-                                                        comboGroup.animals_per_meal_time[mealTime] || []
-                                                    )}
-                                                    disabled={(comboGroup.animals_per_meal_time[mealTime] || []).length === 0}
-                                                >
-                                                    {(comboGroup.animals_per_meal_time[mealTime] || []).length}
-                                                </Button>
-                                            </td>
+                                            <TableCell key={`animals-${mealTime}`} className="text-left whitespace-nowrap">
+                                                {(comboGroup.animals_per_meal_time[mealTime] || []).length}
+                                            </TableCell>
                                         ))}
-                                    </tr>
-                                    <tr>
-                                        <td className="p-2 font-medium text-muted-foreground whitespace-nowrap text-right" colSpan={4}># of Species</td>
+                                    </TableRow>
+                                    <TableRow>
+                                        <TableCell className="font-medium text-muted-foreground whitespace-nowrap text-right" colSpan={4}># of Species</TableCell>
                                          {comboGroup.group_specific_meal_times.map(mealTime => (
-                                            <td key={`species-${mealTime}`} className="p-2 text-left whitespace-nowrap">
-                                                <Button
-                                                    variant="link"
-                                                    className="p-0 h-auto text-sm text-primary font-bold"
-                                                    onClick={() => openSpeciesListModal(
-                                                        `${comboGroup.combo_group_name} - ${mealTime} - Species`,
-                                                        comboGroup.species_details_per_meal_time[mealTime] || []
-                                                    )}
-                                                    disabled={(comboGroup.species_details_per_meal_time[mealTime] || []).length === 0}
-                                                >
-                                                    {(comboGroup.species_details_per_meal_time[mealTime] || []).length}
-                                                </Button>
-                                            </td>
+                                            <TableCell key={`species-${mealTime}`} className="text-left whitespace-nowrap">
+                                                {(comboGroup.species_details_per_meal_time[mealTime] || []).length}
+                                            </TableCell>
                                         ))}
-                                    </tr>
-                                    <tr>
-                                        <td className="p-2 font-medium text-muted-foreground whitespace-nowrap text-right" colSpan={4}># of Enclosures</td>
+                                    </TableRow>
+                                    <TableRow>
+                                        <TableCell className="font-medium text-muted-foreground whitespace-nowrap text-right" colSpan={4}># of Enclosures</TableCell>
                                         {comboGroup.group_specific_meal_times.map(mealTime => (
-                                            <td key={`enclosures-${mealTime}`} className="p-2 text-left whitespace-nowrap">
-                                                 <Button
-                                                    variant="link"
-                                                    className="p-0 h-auto text-sm text-primary font-bold"
-                                                    onClick={() => openEnclosureListModal(
-                                                        `${comboGroup.combo_group_name} - ${mealTime} - Enclosures`,
-                                                        comboGroup.enclosures_per_meal_time[mealTime] || []
-                                                    )}
-                                                    disabled={(comboGroup.enclosures_per_meal_time[mealTime] || []).length === 0}
-                                                >
-                                                    {(comboGroup.enclosures_per_meal_time[mealTime] || []).length}
-                                                 </Button>
-                                            </td>
+                                            <TableCell key={`enclosures-${mealTime}`} className="text-left whitespace-nowrap">
+                                                 {(comboGroup.enclosures_per_meal_time[mealTime] || []).length}
+                                            </TableCell>
                                         ))}
-                                    </tr>
+                                    </TableRow>
                                 </tfoot>
-                            </table>
+                            </Table>
                         </div>
                          {comboGroup.ingredients.length === 0 && <p className="text-muted-foreground p-4 text-center">No ingredients for this combo.</p>}
                       </CardContent>
@@ -2578,76 +2598,70 @@ export default function DietInsightsPage() {
                       </CardHeader>
                       <CardContent className="p-0">
                          <div className="overflow-x-auto rounded-md border">
-                            <table className="w-full text-sm">
-                                <thead className="bg-muted/50">
-                                    <tr>
-                                        <th className="p-2 text-left font-semibold text-muted-foreground whitespace-nowrap">Ingredients Name</th>
-                                        <th className="p-2 text-left font-semibold text-muted-foreground whitespace-nowrap">Preparation Types</th>
-                                        <th className="p-2 text-left font-semibold text-muted-foreground whitespace-nowrap">Cut Sizes</th>
-                                        <th className="p-2 text-left font-semibold text-muted-foreground whitespace-nowrap">Base UOM</th>
+                            <Table>
+                                <TableHeader className="bg-muted/50">
+                                    <TableRow>
+                                        <TableHead className="font-semibold text-muted-foreground whitespace-nowrap">Ingredients Name</TableHead>
+                                        <TableHead className="font-semibold text-muted-foreground whitespace-nowrap">Preparation Types</TableHead>
+                                        <TableHead className="font-semibold text-muted-foreground whitespace-nowrap">Cut Sizes</TableHead>
+                                        <TableHead className="font-semibold text-muted-foreground whitespace-nowrap">Base UOM</TableHead>
                                         {choiceGroup.group_specific_meal_times.map(mealTime => (
-                                            <th key={mealTime} className="p-2 text-left font-semibold text-muted-foreground whitespace-nowrap">{mealTime}</th>
+                                            <TableHead key={mealTime} className="font-semibold text-muted-foreground whitespace-nowrap">{mealTime}</TableHead>
                                         ))}
-                                    </tr>
-                                </thead>
-                                <tbody>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
                                     {choiceGroup.ingredients.map((ingredient, ingIndex) => (
-                                        <tr key={ingIndex} className="border-b last:border-b-0 hover:bg-muted/20">
-                                            <td className="p-2 align-top whitespace-nowrap">{ingredient.ingredient_name}</td>
-                                            <td className="p-2 align-top whitespace-nowrap">{ingredient.preparation_type_name || 'N/A'}</td>
-                                            <td className="p-2 align-top whitespace-nowrap">{ingredient.cut_size_name || 'N/A'}</td>
-                                            <td className="p-2 align-top whitespace-nowrap">{ingredient.base_uom_name}</td>
+                                        <TableRow key={ingIndex} className="border-b last:border-b-0 hover:bg-muted/20">
+                                            <TableCell className="align-top whitespace-nowrap">{ingredient.ingredient_name}</TableCell>
+                                            <TableCell className="align-top whitespace-nowrap">{ingredient.preparation_type_name || 'N/A'}</TableCell>
+                                            <TableCell className="align-top whitespace-nowrap">{ingredient.cut_size_name || 'N/A'}</TableCell>
+                                            <TableCell className="align-top whitespace-nowrap">{ingredient.base_uom_name}</TableCell>
                                             {choiceGroup.group_specific_meal_times.map(mealTime => (
-                                                <td key={`${mealTime}-${ingIndex}`} className="p-2 align-top whitespace-nowrap">
+                                                <TableCell key={`${mealTime}-${ingIndex}`} className="align-top whitespace-nowrap">
                                                     {ingredient.quantities_by_meal_time[mealTime]?.toFixed(4) === '0.0000' ? '' : ingredient.quantities_by_meal_time[mealTime]?.toFixed(4) || ''}
-                                                </td>
+                                                </TableCell>
                                             ))}
-                                        </tr>
+                                        </TableRow>
                                     ))}
-                                </tbody>
+                                </TableBody>
                                  <tfoot className="bg-muted/50 font-semibold">
                                      {allUOMsInGroup.map(uom => (
-                                      <tr key={`total-uom-${itemKey}-${uom}`}>
-                                          <td className="p-2 text-right font-medium text-muted-foreground whitespace-nowrap" colSpan={4}>Total Qty Required ({uom}):</td>
+                                      <TableRow key={`total-uom-${itemKey}-${uom}`}>
+                                          <TableCell colSpan={4} className="text-right text-muted-foreground">Total Qty Required ({uom}):</TableCell>
                                           {choiceGroup.group_specific_meal_times.map(mealTime => (
-                                              <td key={`total-${mealTime}-${uom}`} className="p-2 text-left whitespace-nowrap">
+                                              <TableCell key={`total-${mealTime}-${uom}`} className="text-left">
                                                   {totalsByMealTimeAndUOM[mealTime]?.[uom]?.toFixed(4) === '0.0000' ? '' : totalsByMealTimeAndUOM[mealTime]?.[uom]?.toFixed(4) || ''}
-                                              </td>
+                                              </TableCell>
                                           ))}
-                                      </tr>
+                                      </TableRow>
                                     ))}
-                                    <tr>
-                                        <td className="p-2 font-medium text-muted-foreground whitespace-nowrap text-right" colSpan={4}># of Animals</td>
+                                    <TableRow>
+                                        <TableCell className="font-medium text-muted-foreground whitespace-nowrap text-right" colSpan={4}># of Animals</TableCell>
                                         {choiceGroup.group_specific_meal_times.map(mealTime => (
-                                            <td key={`animals-${mealTime}`} className="p-2 text-left whitespace-nowrap">
-                                                <Button variant="link" className="p-0 h-auto text-sm text-primary font-bold" onClick={() => openAnimalListModal(`${choiceGroup.choice_group_name} - ${mealTime} - Animals`, choiceGroup.animals_per_meal_time[mealTime] || [])} disabled={(choiceGroup.animals_per_meal_time[mealTime] || []).length === 0}>
-                                                    {(choiceGroup.animals_per_meal_time[mealTime] || []).length}
-                                                </Button>
-                                            </td>
+                                            <TableCell key={`animals-${mealTime}`} className="text-left whitespace-nowrap">
+                                                {(choiceGroup.animals_per_meal_time[mealTime] || []).length}
+                                            </TableCell>
                                         ))}
-                                    </tr>
-                                    <tr>
-                                        <td className="p-2 font-medium text-muted-foreground whitespace-nowrap text-right" colSpan={4}># of Species</td>
+                                    </TableRow>
+                                    <TableRow>
+                                        <TableCell className="font-medium text-muted-foreground whitespace-nowrap text-right" colSpan={4}># of Species</TableCell>
                                         {choiceGroup.group_specific_meal_times.map(mealTime => (
-                                            <td key={`species-${mealTime}`} className="p-2 text-left whitespace-nowrap">
-                                                <Button variant="link" className="p-0 h-auto text-sm text-primary font-bold" onClick={() => openSpeciesListModal(`${choiceGroup.choice_group_name} - ${mealTime} - Species`, choiceGroup.species_details_per_meal_time[mealTime] || [])} disabled={(choiceGroup.species_details_per_meal_time[mealTime] || []).length === 0}>
-                                                    {(choiceGroup.species_details_per_meal_time[mealTime] || []).length}
-                                                </Button>
-                                            </td>
+                                            <TableCell key={`species-${mealTime}`} className="text-left whitespace-nowrap">
+                                                {(choiceGroup.species_details_per_meal_time[mealTime] || []).length}
+                                            </TableCell>
                                         ))}
-                                    </tr>
-                                    <tr>
-                                        <td className="p-2 font-medium text-muted-foreground whitespace-nowrap text-right" colSpan={4}># of Enclosures</td>
+                                    </TableRow>
+                                    <TableRow>
+                                        <TableCell className="font-medium text-muted-foreground whitespace-nowrap text-right" colSpan={4}># of Enclosures</TableCell>
                                         {choiceGroup.group_specific_meal_times.map(mealTime => (
-                                            <td key={`enclosures-${mealTime}`} className="p-2 text-left whitespace-nowrap">
-                                                 <Button variant="link" className="p-0 h-auto text-sm text-primary font-bold" onClick={() => openEnclosureListModal(`${choiceGroup.choice_group_name} - ${mealTime} - Enclosures`, choiceGroup.enclosures_per_meal_time[mealTime] || [])} disabled={(choiceGroup.enclosures_per_meal_time[mealTime] || []).length === 0}>
-                                                    {(choiceGroup.enclosures_per_meal_time[mealTime] || []).length}
-                                                 </Button>
-                                            </td>
+                                            <TableCell key={`enclosures-${mealTime}`} className="text-left whitespace-nowrap">
+                                                 {(choiceGroup.enclosures_per_meal_time[mealTime] || []).length}
+                                            </TableCell>
                                         ))}
-                                    </tr>
+                                    </TableRow>
                                 </tfoot>
-                            </table>
+                            </Table>
                         </div>
                         {choiceGroup.ingredients.length === 0 && <p className="text-muted-foreground p-4 text-center">No ingredients for this choice group.</p>}
                       </CardContent>
@@ -2707,7 +2721,39 @@ export default function DietInsightsPage() {
                           <CardContent>
                             {flattenedIngredientsSummaryData.length > 0 ? (
                               <ScrollArea className="h-[300px] w-full rounded-md border">
-                                <DataTable columns={summaryIngredientsColumns} data={flattenedIngredientsSummaryData} />
+                                 <div className="overflow-x-auto">
+                                  <Table>
+                                    <TableHeader>
+                                      <TableRow>
+                                        {columnsForIngredientsSummary.map(col => <TableHead key={col.key as string}>{col.header}</TableHead>)}
+                                      </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                      {flattenedIngredientsSummaryData.map((item, idx) => (
+                                        <TableRow key={idx}>
+                                          {columnsForIngredientsSummary.map(col => (
+                                            <TableCell key={col.key as string}>
+                                              {col.cell ? col.cell(item) : (item as any)[col.key]}
+                                            </TableCell>
+                                          ))}
+                                        </TableRow>
+                                      ))}
+                                    </TableBody>
+                                    <tfoot className="bg-muted/50 font-semibold">
+                                      {Object.entries(ingredientsSummaryTotalsByUOM).map(([uom, total]) => (
+                                        <TableRow key={`summary-total-${uom}`}>
+                                          <TableCell colSpan={columnsForIngredientsSummary.findIndex(c => c.key === 'total_qty_for_target_duration_across_meal_times')} className="text-right text-muted-foreground">
+                                            Total Qty Required ({uom}):
+                                          </TableCell>
+                                          <TableCell className="text-left">
+                                            {total.toFixed(2)}
+                                          </TableCell>
+                                          <TableCell colSpan={columnsForIngredientsSummary.length - 1 - columnsForIngredientsSummary.findIndex(c => c.key === 'total_qty_for_target_duration_across_meal_times')}></TableCell>
+                                        </TableRow>
+                                      ))}
+                                    </tfoot>
+                                  </Table>
+                                </div>
                               </ScrollArea>
                             ) : (
                               <p className="text-muted-foreground">No ingredient data to summarize.</p>
