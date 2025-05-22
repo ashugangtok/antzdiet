@@ -35,10 +35,11 @@ import {
   processChoiceIngredientUsage,
   applyGlobalFilters, getGlobalCounts, getDynamicUniqueFilterOptions
 } from '@/lib/excelParser';
-import { Leaf, Utensils, Filter, Loader2, ChevronsUpDown, Download, Info } from 'lucide-react';
+import { Leaf, Utensils, Filter, Loader2, ChevronsUpDown, Download, Info, FileSpreadsheet, BarChart3 } from 'lucide-react';
 import { format } from 'date-fns';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
+import { DataTable } from '@/components/DataTable';
 
 
 const dayOptionsConfig = [
@@ -53,7 +54,7 @@ const getDayOptions = (autoDetectedInputDuration: number) => {
 
     if (autoDetectedInputDuration === 7) {
         const filteredOptions = options.filter(opt => opt.value !== 1);
-         if (!filteredOptions.some(opt => opt.value === 7)) { // Ensure 7 days is there if auto-detected
+         if (!filteredOptions.some(opt => opt.value === 7)) {
             filteredOptions.unshift({ label: "7 Days", value: 7 });
         }
         return filteredOptions;
@@ -127,6 +128,7 @@ export default function DietInsightsPage() {
   const [enclosureListForModal, setEnclosureListForModal] = useState<string[]>([]);
 
   const [expandedSpeciesText, setExpandedSpeciesText] = useState<Record<string, boolean>>({});
+  const [showSummary, setShowSummary] = useState(false);
 
 
   const openSpeciesListModal = (title: string, details: SpeciesConsumptionDetail[]) => {
@@ -179,6 +181,7 @@ export default function DietInsightsPage() {
     setChoiceIngredientsData(null);
     setError(null);
     setProgress(0);
+    setShowSummary(false);
 
     setAllSiteNames([]);
     setAllSectionNames([]);
@@ -243,7 +246,7 @@ export default function DietInsightsPage() {
       let newTargetDuration = targetDisplayDuration; 
 
       if (detectedInputDuration === 7 && !currentDayOptions.some(opt => opt.value === newTargetDuration)) {
-         newTargetDuration = 7; // Default to 7 if input is 7 and current target is not valid for 7-day input
+         newTargetDuration = 7; 
       } else if (detectedInputDuration === 1 && newTargetDuration > 1) {
         newTargetDuration = 1;
       } else if (!currentDayOptions.some(opt => opt.value === newTargetDuration)) {
@@ -1060,7 +1063,7 @@ export default function DietInsightsPage() {
       doc.text(`Consuming Animals: ${group.overall_consuming_animals_count}`, 14, currentY); currentY += textLineHeight;
       doc.text(`Consuming Enclosures: ${group.overall_consuming_enclosures_count}`, 14, currentY); currentY += textLineHeight;
       
-      const scheduledTimesString = group.group_specific_meal_times.length > 0 ? group.group_specific_meal_times.join(', ') : 'N/A'; // Use scheduled_meal_times for overall, group_specific for table cols
+      const scheduledTimesString = group.group_specific_meal_times.length > 0 ? group.group_specific_meal_times.join(', ') : 'N/A';
       const mealTimesText = `Scheduled Meal Times: ${scheduledTimesString}`;
       const splitMealTimesText = doc.splitTextToSize(mealTimesText, doc.internal.pageSize.getWidth() - 28);
       doc.text(splitMealTimesText, 14, currentY);
@@ -1510,7 +1513,6 @@ export default function DietInsightsPage() {
     doc.save(`ChoiceGroup_${group.choice_group_name.replace(/\s+/g, '_')}_${targetDisplayDuration}Days.pdf`);
   };
 
-
   const renderMultiSelectFilter = (
     label: string,
     options: string[],
@@ -1666,6 +1668,82 @@ export default function DietInsightsPage() {
     </>
   );
 
+  // For Summary Tab - Table Definitions
+  const summaryIngredientsColumns: ColumnDefinition<any>[] = [
+    { key: 'ingredient_type_name', header: 'Ingredient Type' },
+    { key: 'ingredient_name', header: 'Ingredient Name' },
+    { key: 'preparation_type_name', header: 'Preparation Type' },
+    { key: 'cut_size_name', header: 'Cut Size' },
+    { 
+      key: 'total_qty_for_target_duration', 
+      header: `Total Qty for ${targetDisplayDuration} Day(s)`,
+      cell: (item) => item.total_qty_for_target_duration.toFixed(2)
+    },
+    { key: 'base_uom_name', header: 'Base UOM' },
+  ];
+
+  const summaryRecipesColumns: ColumnDefinition<GroupedRecipe>[] = [
+    { key: 'recipe_name', header: 'Recipe Name' },
+    { 
+      key: 'ingredients.length', 
+      header: 'Number of Ingredients',
+      cell: (item) => item.ingredients.length
+    },
+    { 
+      key: 'overall_consuming_species_details.length', 
+      header: 'Overall Consuming Species',
+      cell: (item) => item.overall_consuming_species_details.length
+    },
+    { key: 'overall_consuming_animals_count', header: 'Overall Consuming Animals' },
+  ];
+
+  const summaryCombosColumns: ColumnDefinition<GroupedComboIngredient>[] = [
+    { key: 'combo_group_name', header: 'Combo Name' },
+    { 
+      key: 'ingredients.length', 
+      header: 'Number of Ingredients',
+      cell: (item) => item.ingredients.length 
+    },
+    { 
+      key: 'overall_consuming_species_details.length', 
+      header: 'Overall Consuming Species',
+      cell: (item) => item.overall_consuming_species_details.length
+    },
+    { key: 'overall_consuming_animals_count', header: 'Overall Consuming Animals' },
+  ];
+
+  const summaryChoicesColumns: ColumnDefinition<GroupedChoiceIngredient>[] = [
+    { key: 'choice_group_name', header: 'Choice Group' },
+    { 
+      key: 'ingredients.length', 
+      header: 'Number of Ingredient Options',
+      cell: (item) => item.ingredients.length
+    },
+    { 
+      key: 'overall_consuming_species_details.length', 
+      header: 'Overall Consuming Species',
+      cell: (item) => item.overall_consuming_species_details.length
+    },
+    { key: 'overall_consuming_animals_count', header: 'Overall Consuming Animals' },
+  ];
+
+  const flattenedIngredientsSummaryData = useMemo(() => {
+    if (!overallIngredientsData?.data) return [];
+    return overallIngredientsData.data.flatMap(typeGroup => 
+      typeGroup.ingredients.map(ing => {
+        const totalQty = Object.values(ing.quantities_by_meal_time).reduce((sum, qty) => sum + qty, 0);
+        return {
+          ingredient_type_name: typeGroup.ingredient_type_name,
+          ingredient_name: ing.ingredient_name,
+          preparation_type_name: ing.preparation_type_name || 'N/A',
+          cut_size_name: ing.cut_size_name || 'N/A',
+          total_qty_for_target_duration: totalQty,
+          base_uom_name: ing.base_uom_name
+        };
+      })
+    );
+  }, [overallIngredientsData, targetDisplayDuration]);
+
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -1748,13 +1826,14 @@ export default function DietInsightsPage() {
                 <div className="space-y-6">
                   {displayableIngredientTotals.map((typeGroup) => {
                     const itemKey = `type-${typeGroup.ingredient_type_name.replace(/\s+/g, '-')}`;
-                    const uomTotalsForFooter: Record<string, Record<string, number>> = {};
-                     const allUOMsInGroup = Array.from(new Set(typeGroup.ingredients.map(i => i.base_uom_name))).sort();
+                    const totalsByMealTimeAndUOM: Record<string, Record<string, number>> = {};
+                    const allUOMsInGroup = Array.from(new Set(typeGroup.ingredients.map(i => i.base_uom_name))).sort();
+                    
                     typeGroup.group_specific_meal_times.forEach(mt => {
-                        uomTotalsForFooter[mt] = {};
+                        totalsByMealTimeAndUOM[mt] = {};
                         typeGroup.ingredients.forEach(ing => {
                           const qty = ing.quantities_by_meal_time[mt] || 0;
-                          uomTotalsForFooter[mt][ing.base_uom_name] = (uomTotalsForFooter[mt][ing.base_uom_name] || 0) + qty;
+                          totalsByMealTimeAndUOM[mt][ing.base_uom_name] = (totalsByMealTimeAndUOM[mt][ing.base_uom_name] || 0) + qty;
                         });
                     });
                     
@@ -1857,7 +1936,7 @@ export default function DietInsightsPage() {
                                             <td className="p-2 text-right font-medium text-muted-foreground whitespace-nowrap" colSpan={4}>Total Qty Required ({uom}):</td>
                                             {typeGroup.group_specific_meal_times.map(mealTime => (
                                                 <td key={`total-${mealTime}-${uom}`} className="p-2 text-left whitespace-nowrap">
-                                                    {uomTotalsForFooter[mealTime]?.[uom]?.toFixed(2) === '0.00' ? '' : uomTotalsForFooter[mealTime]?.[uom]?.toFixed(2) || ''}
+                                                    {totalsByMealTimeAndUOM[mealTime]?.[uom]?.toFixed(2) === '0.00' ? '' : totalsByMealTimeAndUOM[mealTime]?.[uom]?.toFixed(2) || ''}
                                                 </td>
                                             ))}
                                         </tr>
@@ -1923,13 +2002,14 @@ export default function DietInsightsPage() {
                 <div className="space-y-6">
                   {displayableRecipes.map((recipe) => {
                     const itemKey = `recipe-${recipe.recipe_name.replace(/\s+/g, '-')}`;
+                    const totalsByMealTimeAndUOM: Record<string, Record<string, number>> = {};
                     const allUOMsInGroup = Array.from(new Set(recipe.ingredients.map(i => i.base_uom_name))).sort();
-                    const uomTotalsForFooter: Record<string, Record<string, number>> = {};
+                    
                     recipe.group_specific_meal_times.forEach(mt => {
-                        uomTotalsForFooter[mt] = {};
+                        totalsByMealTimeAndUOM[mt] = {};
                         recipe.ingredients.forEach(ing => {
                           const qty = ing.quantities_by_meal_time[mt] || 0;
-                          uomTotalsForFooter[mt][ing.base_uom_name] = (uomTotalsForFooter[mt][ing.base_uom_name] || 0) + qty;
+                          totalsByMealTimeAndUOM[mt][ing.base_uom_name] = (totalsByMealTimeAndUOM[mt][ing.base_uom_name] || 0) + qty;
                         });
                     });
 
@@ -2052,7 +2132,7 @@ export default function DietInsightsPage() {
                                             <td className="p-2 text-right font-medium text-muted-foreground whitespace-nowrap" colSpan={4}>Total Qty Required ({uom}):</td>
                                             {recipe.group_specific_meal_times.map(mealTime => (
                                                 <td key={`total-${mealTime}-${uom}`} className="p-2 text-left whitespace-nowrap">
-                                                    {uomTotalsForFooter[mealTime]?.[uom]?.toFixed(4) === '0.0000' ? '' : uomTotalsForFooter[mealTime]?.[uom]?.toFixed(4) || ''}
+                                                    {totalsByMealTimeAndUOM[mealTime]?.[uom]?.toFixed(4) === '0.0000' ? '' : totalsByMealTimeAndUOM[mealTime]?.[uom]?.toFixed(4) || ''}
                                                 </td>
                                             ))}
                                         </tr>
@@ -2118,8 +2198,9 @@ export default function DietInsightsPage() {
                 <div className="space-y-6">
                   {displayableCombos.map((comboGroup) => {
                     const itemKey = `combo-${comboGroup.combo_group_name.replace(/\s+/g, '-')}`;
-                    const allUOMsInGroup = Array.from(new Set(comboGroup.ingredients.map(i => i.base_uom_name))).sort();
                     const totalsByMealTimeAndUOM: Record<string, Record<string, number>> = {};
+                    const allUOMsInGroup = Array.from(new Set(comboGroup.ingredients.map(i => i.base_uom_name))).sort();
+                    
                      comboGroup.group_specific_meal_times.forEach(mt => {
                         totalsByMealTimeAndUOM[mt] = {};
                         comboGroup.ingredients.forEach(ing => {
@@ -2325,8 +2406,9 @@ export default function DietInsightsPage() {
                 <div className="space-y-6">
                   {displayableChoices.map((choiceGroup) => {
                     const itemKey = `choice-${choiceGroup.choice_group_name.replace(/\s+/g, '-')}`;
-                     const allUOMsInGroup = Array.from(new Set(choiceGroup.ingredients.map(i => i.base_uom_name))).sort();
                      const totalsByMealTimeAndUOM: Record<string, Record<string, number>> = {};
+                     const allUOMsInGroup = Array.from(new Set(choiceGroup.ingredients.map(i => i.base_uom_name))).sort();
+                     
                      choiceGroup.group_specific_meal_times.forEach(mt => {
                         totalsByMealTimeAndUOM[mt] = {};
                         choiceGroup.ingredients.forEach(ing => {
@@ -2491,23 +2573,111 @@ export default function DietInsightsPage() {
 
           
           <TabsContent value="summary" className="space-y-6">
-             <Card>
+            <Card className="shadow-md">
               <CardHeader>
                 <CardTitle className="flex items-center text-xl text-primary">
-                  Summary
+                  <BarChart3 className="mr-2 h-5 w-5" /> Summary
                 </CardTitle>
-                 <CardDescription>
-                  This tab will provide a summary of your diet plan. (Content to be defined)
-                </CardDescription>
               </CardHeader>
               <CardContent>
-                <Alert>
-                  <Info className="h-4 w-4" />
-                  <AlertTitle>Under Construction</AlertTitle>
-                  <AlertDescription>
-                    The content and functionality for this Summary tab are yet to be defined.
-                  </AlertDescription>
-                </Alert>
+                {!dietData ? (
+                  <Alert>
+                    <FileSpreadsheet className="h-4 w-4" />
+                    <AlertTitle>No Data Loaded</AlertTitle>
+                    <AlertDescription>
+                      Please upload an Excel file on the "Upload Excel" tab to generate a summary.
+                    </AlertDescription>
+                  </Alert>
+                ) : (
+                  <div className="space-y-4">
+                    <Button 
+                      onClick={() => setShowSummary(!showSummary)}
+                      disabled={isLoading || isProcessingOverall || isProcessingDetailedRaw || isProcessingRecipes || isProcessingCombo || isProcessingChoice}
+                    >
+                      {showSummary ? "Hide Summary" : "Generate Summary"}
+                    </Button>
+
+                    {showSummary && (
+                      <div className="space-y-6">
+                        {/* Ingredients Summary */}
+                        <Card>
+                          <CardHeader>
+                            <CardTitle>Ingredients Summary</CardTitle>
+                            <CardDescription>
+                              Total unique ingredients listed: {flattenedIngredientsSummaryData.length}
+                            </CardDescription>
+                          </CardHeader>
+                          <CardContent>
+                            {flattenedIngredientsSummaryData.length > 0 ? (
+                              <ScrollArea className="h-[300px] w-full rounded-md border">
+                                <DataTable columns={summaryIngredientsColumns} data={flattenedIngredientsSummaryData} />
+                              </ScrollArea>
+                            ) : (
+                              <p className="text-muted-foreground">No ingredient data to summarize.</p>
+                            )}
+                          </CardContent>
+                        </Card>
+
+                        {/* Recipes Summary */}
+                        <Card>
+                          <CardHeader>
+                            <CardTitle>Recipes Summary</CardTitle>
+                            <CardDescription>
+                              Total recipes: {recipesData?.data?.length || 0}
+                            </CardDescription>
+                          </CardHeader>
+                          <CardContent>
+                            {recipesData?.data && recipesData.data.length > 0 ? (
+                              <ScrollArea className="h-[300px] w-full rounded-md border">
+                                <DataTable columns={summaryRecipesColumns} data={recipesData.data} />
+                              </ScrollArea>
+                            ) : (
+                              <p className="text-muted-foreground">No recipe data to summarize.</p>
+                            )}
+                          </CardContent>
+                        </Card>
+
+                        {/* Combo Ingredients Summary */}
+                        <Card>
+                          <CardHeader>
+                            <CardTitle>Combo Ingredients Summary</CardTitle>
+                            <CardDescription>
+                              Total combo groups: {comboIngredientsData?.data?.length || 0}
+                            </CardDescription>
+                          </CardHeader>
+                          <CardContent>
+                            {comboIngredientsData?.data && comboIngredientsData.data.length > 0 ? (
+                              <ScrollArea className="h-[300px] w-full rounded-md border">
+                                <DataTable columns={summaryCombosColumns} data={comboIngredientsData.data} />
+                              </ScrollArea>
+                            ) : (
+                              <p className="text-muted-foreground">No combo ingredient data to summarize.</p>
+                            )}
+                          </CardContent>
+                        </Card>
+
+                        {/* Choice Ingredients Summary */}
+                        <Card>
+                          <CardHeader>
+                            <CardTitle>Choice Ingredients Summary</CardTitle>
+                            <CardDescription>
+                              Total choice groups: {choiceIngredientsData?.data?.length || 0}
+                            </CardDescription>
+                          </CardHeader>
+                          <CardContent>
+                            {choiceIngredientsData?.data && choiceIngredientsData.data.length > 0 ? (
+                              <ScrollArea className="h-[300px] w-full rounded-md border">
+                                <DataTable columns={summaryChoicesColumns} data={choiceIngredientsData.data} />
+                              </ScrollArea>
+                            ) : (
+                              <p className="text-muted-foreground">No choice ingredient data to summarize.</p>
+                            )}
+                          </CardContent>
+                        </Card>
+                      </div>
+                    )}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -2605,5 +2775,4 @@ export default function DietInsightsPage() {
     </div>
   );
 }
-
     
