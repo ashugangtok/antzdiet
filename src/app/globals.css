@@ -4,60 +4,66 @@
 
 body {
   font-family: Arial, Helvetica, sans-serif;
+  background-image: url('https://raw.githubusercontent.com/stackblitz/stackblitz-codeflow/main/background.jpg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  min-height: 100vh;
 }
 
 @layer base {
   :root {
-    --background: 195 23% 95%; /* #F0F4F5 light gray */
-    --foreground: 195 8% 22%; /* #333B3D dark grayish blue */
-    --card: 0 0% 100%; /* white */
+    --background: 195 23% 95% / 0.9; /* Added opacity for background */
+    --foreground: 195 8% 22%;
+    --card: 0 0% 100% / 0.95; /* Made cards slightly transparent */
     --card-foreground: 195 8% 22%;
     --popover: 0 0% 100%;
     --popover-foreground: 195 8% 22%;
-    --primary: 195 27% 58%; /* #73A5B3 desaturated blue */
-    --primary-foreground: 0 0% 100%; /* white */
-    --secondary: 195 20% 90%; /* light gray */
+    --primary: 195 27% 58%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 195 20% 90%;
     --secondary-foreground: 195 8% 22%;
-    --muted: 195 15% 85%; /* lighter gray */
-    --muted-foreground: 195 10% 45%; /* gray for muted text */
-    --accent: 160 19% 46%; /* #5E8B7E muted teal */
-    --accent-foreground: 0 0% 100%; /* white */
+    --muted: 195 15% 85%;
+    --muted-foreground: 195 10% 45%;
+    --accent: 160 19% 46%;
+    --accent-foreground: 0 0% 100%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
-    --border: 195 20% 88%; /* light gray border */
+    --border: 195 20% 88%;
     --input: 195 20% 88%;
-    --ring: 195 27% 58%; /* primary color for rings */
+    --ring: 195 27% 58%;
     --chart-1: 12 76% 61%;
     --chart-2: 173 58% 39%;
     --chart-3: 197 37% 24%;
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
     --radius: 0.5rem;
-    /* Sidebar variables - kept neutral or updated slightly if needed */
-    --sidebar-background: 200 20% 98%; /* Very light almost white */
+    --sidebar-background: 200 20% 98% / 0.95;
     --sidebar-foreground: 200 10% 25%;
-    --sidebar-primary: 195 27% 58%; /* Using app primary */
+    --sidebar-primary: 195 27% 58%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 160 19% 46%; /* Using app accent */
+    --sidebar-accent: 160 19% 46%;
     --sidebar-accent-foreground: 0 0% 100%;
     --sidebar-border: 195 20% 90%;
     --sidebar-ring: 195 27% 58%;
   }
+
   .dark {
-    --background: 200 10% 12%; /* Dark grayish blue */
-    --foreground: 200 15% 88%; /* Light grayish blue */
-    --card: 200 10% 15%;
+    --background: 200 10% 12% / 0.9;
+    --foreground: 200 15% 88%;
+    --card: 200 10% 15% / 0.95;
     --card-foreground: 200 15% 88%;
     --popover: 200 10% 15%;
     --popover-foreground: 200 15% 88%;
-    --primary: 195 27% 58%; /* #73A5B3 desaturated blue */
-    --primary-foreground: 200 10% 10%; /* Dark text for contrast */
+    --primary: 195 27% 58%;
+    --primary-foreground: 200 10% 10%;
     --secondary: 200 10% 20%;
     --secondary-foreground: 200 15% 88%;
     --muted: 200 10% 20%;
     --muted-foreground: 200 10% 55%;
-    --accent: 160 19% 46%; /* #5E8B7E muted teal */
-    --accent-foreground: 160 5% 10%; /* Dark text for contrast */
+    --accent: 160 19% 46%;
+    --accent-foreground: 160 5% 10%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 0 0% 98%;
     --border: 200 10% 25%;
@@ -68,8 +74,7 @@ body {
     --chart-3: 30 80% 55%;
     --chart-4: 280 65% 60%;
     --chart-5: 340 75% 55%;
-    /* Dark Sidebar variables */
-    --sidebar-background: 200 10% 10%;
+    --sidebar-background: 200 10% 10% / 0.95;
     --sidebar-foreground: 200 15% 85%;
     --sidebar-primary: 195 27% 58%;
     --sidebar-primary-foreground: 200 10% 10%;
